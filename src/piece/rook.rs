@@ -5,8 +5,8 @@ pub fn get_legal_moves(piece: &Piece, white: Bitboard, black: Bitboard) -> Bitbo
 
     // Up
     let mut position = piece.position;
-    while position < 56 {
-        position += 8;
+    while position.can_move_up() {
+        position = position.moved_unchecked(0, -1);
         if white.get(position) {
             break;
         }
@@ -18,8 +18,8 @@ pub fn get_legal_moves(piece: &Piece, white: Bitboard, black: Bitboard) -> Bitbo
 
     // Down
     position = piece.position;
-    while position > 7 {
-        position -= 8;
+    while position.can_move_down() {
+        position = position.moved_unchecked(0, 1);
         if white.get(position) {
             break;
         }
@@ -31,8 +31,8 @@ pub fn get_legal_moves(piece: &Piece, white: Bitboard, black: Bitboard) -> Bitbo
 
     // Left
     position = piece.position;
-    while position % 8 != 0 {
-        position -= 1;
+    while position.can_move_left() {
+        position = position.moved_unchecked(-1, 0);
         if white.get(position) {
             break;
         }
@@ -44,8 +44,8 @@ pub fn get_legal_moves(piece: &Piece, white: Bitboard, black: Bitboard) -> Bitbo
 
     // Right
     position = piece.position;
-    while position % 8 != 7 {
-        position += 1;
+    while position.can_move_right() {
+        position = position.moved_unchecked(1, 0);
         if white.get(position) {
             break;
         }
@@ -56,4 +56,104 @@ pub fn get_legal_moves(piece: &Piece, white: Bitboard, black: Bitboard) -> Bitbo
     }
 
     board
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Bitboard, Piece, PieceType};
+
+    #[test]
+    fn legal_moves() {
+        let piece = Piece::new_white(PieceType::Rook, (4, 4).into());
+
+        let legal_moves = piece.get_legal_moves(Default::default(), Default::default());
+
+        assert_eq!(
+            legal_moves,
+            r#"
+            00001000
+            00001000
+            00001000
+            00001000
+            11110111
+            00001000
+            00001000
+            00001000
+        "#
+            .parse()
+            .unwrap()
+        )
+    }
+
+    #[test]
+    fn blocked_white() {
+        let piece = Piece::new_white(PieceType::Rook, (4, 4).into());
+
+        let white: Bitboard = r#"
+            00000000
+            00000000
+            00000000
+            00001000
+            00010100
+            00001000
+            00000000
+            00000000
+        "#
+        .parse()
+        .unwrap();
+
+        let legal_moves = piece.get_legal_moves(white, Default::default());
+
+        assert_eq!(
+            legal_moves,
+            r#"
+            00000000
+            00000000
+            00000000
+            00000000
+            00000000
+            00000000
+            00000000
+            00000000
+        "#
+            .parse()
+            .unwrap()
+        )
+    }
+
+    #[test]
+    fn blocked_black() {
+        let piece = Piece::new_white(PieceType::Rook, (4, 4).into());
+
+        let black: Bitboard = r#"
+            00000000
+            00000000
+            00000000
+            00001000
+            00010100
+            00001000
+            00000000
+            00000000
+        "#
+        .parse()
+        .unwrap();
+
+        let legal_moves = piece.get_legal_moves(Default::default(), black);
+
+        assert_eq!(
+            legal_moves,
+            r#"
+            00000000
+            00000000
+            00000000
+            00001000
+            00010100
+            00001000
+            00000000
+            00000000
+        "#
+            .parse()
+            .unwrap()
+        )
+    }
 }

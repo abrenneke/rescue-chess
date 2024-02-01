@@ -4,46 +4,75 @@ use super::Piece;
 
 pub fn get_legal_moves(piece: &Piece, white: Bitboard, _black: Bitboard) -> Bitboard {
     let mut board = Bitboard::new();
-
-    // Up
-    if piece.position < 56 && !white.get(piece.position + 8) {
-        board.set(piece.position + 8);
-    }
+    let pos = piece.position;
 
     // Up left
-    if piece.position < 56 && piece.position % 8 != 0 && !white.get(piece.position + 7) {
-        board.set(piece.position + 7);
+    if pos.can_move_left() && pos.can_move_up() {
+        board.set(pos.moved_unchecked(-1, -1));
+    }
+
+    // Up
+    if pos.can_move_up() {
+        board.set(pos.moved_unchecked(0, -1));
     }
 
     // Up right
-    if piece.position < 56 && piece.position % 8 != 7 && !white.get(piece.position + 9) {
-        board.set(piece.position + 9);
+    if pos.can_move_right() && pos.can_move_up() {
+        board.set(pos.moved_unchecked(1, -1));
     }
 
     // Right
-    if piece.position % 8 != 7 && !white.get(piece.position + 1) {
-        board.set(piece.position + 1);
-    }
-
-    // Down
-    if piece.position > 7 && !white.get(piece.position - 8) {
-        board.set(piece.position - 8);
+    if pos.can_move_right() {
+        board.set(pos.moved_unchecked(1, 0));
     }
 
     // Down right
-    if piece.position > 7 && piece.position % 8 != 7 && !white.get(piece.position - 7) {
-        board.set(piece.position - 7);
+    if pos.can_move_down() && pos.can_move_right() {
+        board.set(pos.moved_unchecked(1, 1));
+    }
+
+    // Down
+    if pos.can_move_down() {
+        board.set(pos.moved_unchecked(0, 1));
     }
 
     // Down left
-    if piece.position > 7 && piece.position % 8 != 0 && !white.get(piece.position - 9) {
-        board.set(piece.position - 9);
+    if pos.can_move_left() && pos.can_move_down() {
+        board.set(pos.moved_unchecked(-1, 1));
     }
 
     // Left
-    if piece.position % 8 != 0 && !white.get(piece.position - 1) {
-        board.set(piece.position - 1);
+    if pos.can_move_left() {
+        board.set(pos.moved_unchecked(-1, 0));
     }
 
-    board
+    board & !white
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Piece, PieceType};
+
+    #[test]
+    pub fn move_king_empty_spaces() {
+        let king = Piece::new_white(PieceType::King, (4, 4).into());
+
+        let legal_moves = king.get_legal_moves(Default::default(), Default::default());
+
+        assert_eq!(
+            legal_moves,
+            r#"
+            00000000
+            00000000
+            00000000
+            00011100
+            00010100
+            00011100
+            00000000
+            00000000
+        "#
+            .parse()
+            .unwrap()
+        );
+    }
 }
