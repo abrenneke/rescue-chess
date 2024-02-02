@@ -7,7 +7,9 @@ pub mod pawn;
 pub mod queen;
 pub mod rook;
 
-#[derive(Debug, PartialEq, Copy, Clone, Eq)]
+use colored::*;
+
+#[derive(Debug, PartialEq, Copy, Clone, Eq, Hash)]
 pub enum PieceType {
     Pawn,
     Knight,
@@ -17,13 +19,13 @@ pub enum PieceType {
     King,
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone, Hash, Eq)]
 pub enum Color {
     White,
     Black,
 }
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Copy, Clone, Hash, Eq)]
 pub struct Piece {
     pub piece_type: PieceType,
     pub color: Color,
@@ -55,6 +57,22 @@ impl Piece {
             PieceType::Rook => rook::get_legal_moves(self, white, black),
             PieceType::Queen => queen::get_legal_moves(self, white, black),
             PieceType::King => king::get_legal_moves(self, white, black),
+        }
+    }
+
+    pub fn to_colored_unicode(&self) -> ColoredString {
+        let piece = match self.piece_type {
+            PieceType::Pawn => "♟",
+            PieceType::Knight => "♞",
+            PieceType::Bishop => "♝",
+            PieceType::Rook => "♜",
+            PieceType::Queen => "♛",
+            PieceType::King => "♚",
+        };
+
+        match self.color {
+            Color::White => piece.yellow(),
+            Color::Black => piece.cyan(),
         }
     }
 }

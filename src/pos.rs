@@ -7,11 +7,6 @@ pub struct Pos(pub u8);
 
 impl Pos {
     #[inline(always)]
-    pub fn new(position: u8) -> Pos {
-        Pos(position)
-    }
-
-    #[inline(always)]
     pub fn xy(x: u8, y: u8) -> Pos {
         Pos(x + y * 8)
     }
@@ -171,6 +166,7 @@ impl Pos {
         self.0 % 8 != 7
     }
 
+    #[inline(always)]
     pub fn invert(&self) -> Pos {
         let x = self.0 % 8;
         let y = self.0 / 8;
@@ -178,6 +174,7 @@ impl Pos {
         Pos::xy(7 - x, 7 - y)
     }
 
+    #[inline(always)]
     pub fn as_tuple(&self) -> (u8, u8) {
         (self.0 % 8, self.0 / 8)
     }

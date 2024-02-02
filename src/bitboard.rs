@@ -1,6 +1,6 @@
 use crate::pos::Pos;
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Copy, Clone, Eq, Hash)]
 pub struct Bitboard(pub u64);
 
 impl Bitboard {

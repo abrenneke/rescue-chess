@@ -8,11 +8,11 @@ pub fn negamax(position: &Position, depth: u32) -> (Option<PieceMove>, i32) {
     let mut max = i32::MIN;
     let mut best_move = None;
 
-    if position.is_checkmate() {
+    if position.is_checkmate().unwrap() {
         return (None, -1000);
     }
 
-    let moves = position.get_all_legal_moves();
+    let moves = position.get_all_legal_moves().unwrap();
 
     for mv in moves {
         // Apply the move to a clone of the position
@@ -41,7 +41,7 @@ pub mod tests {
     #[test]
     pub fn negamax_1() {
         let position: Position = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR".into();
-        let (best_move, score) = negamax(&position, 6);
+        let (best_move, score) = negamax(&position, 5);
 
         println!("{} ({})", best_move.unwrap(), score);
     }

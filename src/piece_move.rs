@@ -1,4 +1,4 @@
-use crate::{Piece, PieceType, Pos, Position};
+use crate::{PieceType, Pos};
 
 #[derive(Debug, Clone, Copy)]
 pub struct PieceMove {
@@ -42,88 +42,6 @@ pub enum MoveType {
     /// A move that promotes a pawn and captures an enemy piece
     /// The first PieceType is the type of piece the pawn is promoted to, the second is the type of piece the pawn captures
     CapturePromotion(PieceType, PieceType),
-}
-
-impl Position {
-    pub fn apply_move(&mut self, mv: PieceMove) -> Result<(), anyhow::Error> {
-        let piece = self
-            .get_piece_at(mv.from)
-            .ok_or(anyhow::anyhow!("No piece at position"))?;
-
-        let legal_moves = piece.get_legal_moves(self.white_map, self.black_map);
-
-        if !legal_moves.get(mv.to) {
-            return Err(anyhow::anyhow!("Illegal move"));
-        }
-
-        let piece = self.get_piece_at_mut(mv.from).unwrap();
-
-        match mv.move_type {
-            MoveType::Unknown => {
-                return Err(anyhow::anyhow!("Unknown move type"));
-            }
-            MoveType::Normal => {
-                piece.position = mv.to;
-            }
-            MoveType::Capture(_) => {
-                piece.position = mv.to;
-                self.remove_piece_at(mv.to);
-            }
-            MoveType::EnPassant(pos) => {
-                piece.position = mv.to;
-                self.remove_piece_at(pos);
-            }
-            MoveType::Castle(_king_pos, _rook_pos) => {
-                todo!();
-            }
-            MoveType::Promotion(piece_type) => {
-                piece.position = mv.to;
-                piece.piece_type = piece_type;
-            }
-            MoveType::CapturePromotion(_promotion, _captured) => {
-                todo!();
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn unapply_move(&mut self, mv: PieceMove) -> Result<(), anyhow::Error> {
-        let piece = self
-            .get_piece_at(mv.to)
-            .ok_or(anyhow::anyhow!("No piece at position"))?;
-
-        let color = piece.color;
-
-        match mv.move_type {
-            MoveType::Unknown => {
-                return Err(anyhow::anyhow!("Unknown move type"));
-            }
-            MoveType::Normal => {
-                self.get_piece_at_mut(mv.to).unwrap().position = mv.from;
-            }
-            MoveType::Capture(captured) => {
-                self.get_piece_at_mut(mv.to).unwrap().position = mv.from;
-                self.add_piece(Piece::new(captured, color, mv.to));
-            }
-            MoveType::EnPassant(pos) => {
-                self.get_piece_at_mut(mv.to).unwrap().position = mv.from;
-                self.add_piece(Piece::new(PieceType::Pawn, color, pos));
-            }
-            MoveType::Castle(_king_pos, _rook_pos) => {
-                todo!();
-            }
-            MoveType::Promotion(_) => {
-                self.get_piece_at_mut(mv.to).unwrap().position = mv.from;
-                self.get_piece_at_mut(mv.to).unwrap().piece_type = PieceType::Pawn;
-            }
-            MoveType::CapturePromotion(_, _) => {
-                todo!();
-            }
-        }
-
-        Ok(())
-    }
 }
 
 impl std::fmt::Display for PieceMove {
