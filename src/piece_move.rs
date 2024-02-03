@@ -1,5 +1,6 @@
 use crate::{PieceType, Pos};
 
+/// A move that a chess piece can make.
 #[derive(Debug, Clone, Copy)]
 pub struct PieceMove {
     /// The type of piece that is moving
@@ -15,6 +16,7 @@ pub struct PieceMove {
     pub move_type: MoveType,
 }
 
+/// The type of move a piece can make. Non-normal moves can store additional information, such as captured piece.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MoveType {
     /// A move that has not been classified yet
@@ -44,6 +46,7 @@ pub enum MoveType {
     CapturePromotion(PieceType, PieceType),
 }
 
+/// Displays the move in algebraic notation.
 impl std::fmt::Display for PieceMove {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(

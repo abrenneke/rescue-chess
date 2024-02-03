@@ -100,6 +100,12 @@ impl Position {
         }
     }
 
+    /// Returns the start position of a chess game.
+    pub fn start_position() -> Self {
+        return Self::parse_from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+            .unwrap();
+    }
+
     /// Inverts the position, i.e. makes the black pieces white and vice versa.
     /// The board will be flipped as well, i.e. a1 will become h8 and so on.
     pub fn invert(&mut self) {

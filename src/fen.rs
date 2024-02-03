@@ -1,7 +1,20 @@
 use crate::{position::CastlingRights, Color, Piece, PieceType, Pos, Position};
 
 impl Position {
-    // TODO Extended Position Description instead?
+    /// Parses a position from FEN notation.
+    ///
+    /// Note that this can only parse when the active color is white, because
+    /// the engine only supports playing as white.
+    ///
+    /// TODO Extended Position Description instead?
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rescue_chess::Position;
+    ///
+    /// let position = Position::parse_from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
+    /// ```
     pub fn parse_from_fen(notation: &str) -> Result<Position, anyhow::Error> {
         let mut pieces = Vec::new();
         let mut position = Pos(0);
@@ -185,6 +198,17 @@ impl Position {
         ))
     }
 
+    /// Converts the position to FEN notation.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rescue_chess::Position;
+    ///
+    /// let position = Position::start_position();
+    /// let fen = position.to_fen();
+    /// assert_eq!(fen, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    /// ```
     pub fn to_fen(&self) -> String {
         let mut fen = String::new();
 
