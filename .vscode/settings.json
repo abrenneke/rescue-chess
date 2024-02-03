@@ -1,5 +1,14 @@
 {
-  "editor.detectIndentation": false,
-"editor.tabSize": 4,
-"rust-analyzer.showUnlinkedFileNotification": false
+    "editor.detectIndentation": false,
+    "rust-analyzer.showUnlinkedFileNotification": false,
+    "svelte.enable-ts-plugin": true,
+    "prettier.documentSelectors": ["**/*.svelte"],
+    "prettier.configPath": "app/.prettierrc.yml",
+
+    "[rust]": {
+        "editor.tabSize": 4
+    },
+    "[svelte]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    }
 }
