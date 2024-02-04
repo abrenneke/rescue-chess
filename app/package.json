@@ -10,12 +10,12 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.0.0-alpha.13",
-    "@tauri-apps/plugin-shell": "^2.0.0-alpha.3"
+    "@tauri-apps/api": "^2.0.0-beta.0",
+    "@tauri-apps/plugin-shell": "^2.0.0-beta.0"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^3.0.1",
-    "@tauri-apps/cli": "^2.0.0-alpha.20",
+    "@tauri-apps/cli": "^2.0.0-beta.0",
     "@tsconfig/svelte": "^5.0.2",
     "prettier": "^3.2.4",
     "prettier-plugin-svelte": "^3.1.2",
