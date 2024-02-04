@@ -2,8 +2,9 @@
   import { onMount } from 'svelte';
   import ChessPiece from './ChessPiece.svelte';
   import { nanoid } from 'nanoid';
-
-  export let fen: string;
+  import { invoke } from '@tauri-apps/api/core';
+  import PossibleMove from './PossibleMove.svelte';
+  import { positionToXy, type PieceMove, isEnum } from './chess';
 
   type Piece = {
     id: string;
@@ -11,15 +12,19 @@
     color: 'white' | 'black';
     x: number;
     y: number;
-    ghostX: number;
-    ghostY: number;
+    displayX: number;
+    displayY: number;
   };
 
   export let board: HTMLDivElement;
 
-  let draggingPiece: { id: string; element: HTMLDivElement } | undefined;
+  let selectedPiece: Piece | undefined;
+
+  $: selectedPieceType = selectedPiece?.type as Piece['type'];
 
   let pieces: Piece[] = [];
+
+  let possibleMovePositions: { x: number; y: number; type: 'normal' | 'capture' }[] = [];
 
   function parseFen(fen: string): Piece[] {
     const [positions] = fen.split(' ');
@@ -40,9 +45,9 @@
             color: char === char.toLowerCase() ? 'black' : 'white',
             x: x,
             y: i,
-            ghostX: 0,
-            ghostY: 0,
             id: nanoid(),
+            displayX: x,
+            displayY: i,
           });
 
           x++;
@@ -55,95 +60,143 @@
     return pieces;
   }
 
-  onMount(() => {
+  async function reloadPieces() {
+    const fen = await invoke<string>('get_position_fen', {});
     pieces = parseFen(fen);
-  });
-
-  function dragStart(event: DragEvent) {
-    const element = event.currentTarget as HTMLDivElement;
-
-    draggingPiece = {
-      id: element.dataset.id!,
-      element,
-    };
-
-    document.addEventListener('mousemove', dragPiece);
-    document.addEventListener('mouseup', dropPiece);
   }
 
-  function dragPiece(event: MouseEvent) {
-    if (draggingPiece == null) {
-      return;
+  async function applyMove(move: PieceMove) {
+    const [fromX, fromY] = positionToXy(move.from);
+    const [toX, toY] = positionToXy(move.to);
+
+    await invoke('move_piece', { fromX, fromY, toX, toY });
+
+    const from = pieces.find((p) => p.x === fromX && p.y === fromY)!;
+
+    if (isEnum(move.move_type, 'Capture')) {
+      const to = pieces.find((p) => p.x === toX && p.y === toY)!;
+      pieces = pieces.filter((p) => p.id !== to.id);
     }
 
-    const piece = pieces.find((piece) => piece.id === draggingPiece!.id)!;
+    from.x = toX;
+    from.y = toY;
 
-    const mousePositionRelativeToBoard = {
-      x: event.clientX - board.getBoundingClientRect().left,
-      y: event.clientY - board.getBoundingClientRect().top,
-    };
-
-    const closestCell = {
-      x: Math.floor(mousePositionRelativeToBoard.x / (board.clientWidth / 8)),
-      y: Math.floor(mousePositionRelativeToBoard.y / (board.clientHeight / 8)),
-    };
-
-    if (closestCell.x < 0 || closestCell.x > 7 || closestCell.y < 0 || closestCell.y > 7) {
-      return;
-    }
-
-    const relativeCell = {
-      x: closestCell.x - piece.x,
-      y: closestCell.y - piece.y,
-    };
-
-    piece.ghostX = relativeCell.x;
-    piece.ghostY = relativeCell.y;
+    lerpPieceOverTime(from, [from.displayX, from.displayY], [toX, toY], 150);
 
     pieces = pieces;
   }
 
-  function dropPiece() {
-    if (draggingPiece) {
-      const piece = pieces.find((piece) => piece.id === draggingPiece!.id)!;
+  onMount(async () => {
+    await invoke('reset', {});
+    await reloadPieces();
+  });
 
-      piece.x += piece.ghostX;
-      piece.y += piece.ghostY;
+  async function onPieceSelected(pieceId: string) {
+    const piece = pieces.find((p) => p.id === pieceId);
 
-      piece.ghostX = 0;
-      piece.ghostY = 0;
-
-      draggingPiece = undefined;
-      document.removeEventListener('mousemove', dragPiece);
-
-      pieces = [...pieces];
+    if (!piece) {
+      return;
     }
+
+    if (piece === selectedPiece) {
+      selectedPiece = undefined;
+      possibleMovePositions = [];
+      return;
+    }
+
+    selectedPiece = piece;
+
+    const possibleMoves = await invoke<PieceMove[]>('get_valid_positions_for', {
+      x: piece.x,
+      y: piece.y,
+    });
+
+    possibleMovePositions = possibleMoves.map((move) => {
+      const [x, y] = positionToXy(move.to);
+      return {
+        x,
+        y,
+        type: move.move_type === 'Normal' ? 'normal' : isEnum(move.move_type, 'Capture') ? 'capture' : 'normal',
+      };
+    });
   }
+
+  async function onMovePositionSelected(x: number, y: number) {
+    if (!selectedPiece) {
+      return;
+    }
+
+    const possibleMoves = await invoke<PieceMove[]>('get_valid_positions_for', {
+      x: selectedPiece.x,
+      y: selectedPiece.y,
+    });
+
+    const move = possibleMoves.find((move) => {
+      const [moveX, moveY] = positionToXy(move.to);
+      return moveX === x && moveY === y;
+    })!;
+
+    await applyMove(move);
+
+    selectedPiece = undefined;
+    possibleMovePositions = [];
+  }
+
+  function lerpPiece(piece: Piece, from: [number, number], to: [number, number], t: number) {
+    // ease-out
+    piece.displayX = from[0] + (to[0] - from[0]) * (1 - Math.pow(1 - t, 2));
+    piece.displayY = from[1] + (to[1] - from[1]) * (1 - Math.pow(1 - t, 2));
+  }
+
+  function lerpPieceOverTime(piece: Piece, from: [number, number], to: [number, number], duration: number) {
+    const start = performance.now();
+
+    function update() {
+      const now = performance.now();
+      const elapsed = now - start;
+      const t = Math.min(1, elapsed / duration);
+
+      lerpPiece(piece, from, to, t);
+      pieces = pieces;
+
+      if (t < 1) {
+        requestAnimationFrame(update);
+      }
+    }
+
+    requestAnimationFrame(update);
+  }
+
+  $: piecesByColor = pieces.reduce(
+    (acc, piece) => {
+      if (piece.color === 'white') {
+        acc[0].push(piece);
+      } else {
+        acc[1].push(piece);
+      }
+      return acc;
+    },
+    [[], []] as [Piece[], Piece[]],
+  );
 </script>
 
-<div
-  class="chess-pieces"
-  on:drop={dropPiece}
-  on:dragstart={(e) => {
-    e.preventDefault();
-  }}
-  on:dragover={(e) => {
-    e.preventDefault();
-  }}
->
-  {#each pieces as { x, y, ghostX, ghostY, type, color, id }}
-    <ChessPiece
-      {board}
-      onDragStart={dragStart}
-      {x}
-      {y}
-      {ghostX}
-      {ghostY}
-      {type}
-      {color}
-      {id}
-      isDragging={id === draggingPiece?.id}
-    />
+<div class="chess-pieces">
+  {#each piecesByColor as group}
+    {#each group as { x, y, type, color, id, displayX, displayY }}
+      <ChessPiece
+        {board}
+        onSelect={onPieceSelected}
+        x={displayX}
+        y={displayY}
+        {type}
+        {color}
+        {id}
+        isSelected={id === selectedPiece?.id}
+      />
+    {/each}
+  {/each}
+  {#each possibleMovePositions as { x, y, type }}
+    <PossibleMove {board} {x} {y} pieceType={selectedPieceType} onPositionSelected={onMovePositionSelected} {type} />
   {/each}
 </div>
 

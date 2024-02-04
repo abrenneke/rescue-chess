@@ -8,8 +8,9 @@ pub mod queen;
 pub mod rook;
 
 use colored::*;
+use serde::Serialize;
 
-#[derive(Debug, PartialEq, Copy, Clone, Eq, Hash)]
+#[derive(Debug, PartialEq, Copy, Clone, Eq, Hash, Serialize)]
 pub enum PieceType {
     Pawn,
     Knight,
@@ -19,13 +20,13 @@ pub enum PieceType {
     King,
 }
 
-#[derive(Debug, PartialEq, Copy, Clone, Hash, Eq)]
+#[derive(Debug, PartialEq, Copy, Clone, Hash, Eq, Serialize)]
 pub enum Color {
     White,
     Black,
 }
 
-#[derive(PartialEq, Copy, Clone, Hash, Eq)]
+#[derive(PartialEq, Copy, Clone, Hash, Eq, Serialize)]
 pub struct Piece {
     pub piece_type: PieceType,
     pub color: Color,

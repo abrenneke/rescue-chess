@@ -36,7 +36,7 @@
     {/each}
   </div>
   <div class="pieces">
-    <ChessPieces {board} fen="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1" />
+    <ChessPieces {board} />
   </div>
 </div>
 
@@ -51,8 +51,7 @@
     grid-template-columns: repeat(8, 1fr);
     grid-template-rows: repeat(8, 1fr);
   }
-  .cell {
-  }
+
   .white {
     background: #f0d9b5;
   }

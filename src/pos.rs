@@ -1,8 +1,10 @@
 use std::ops::{Deref, DerefMut};
 
+use serde::Serialize;
+
 use crate::bitboard::Bitboard;
 
-#[derive(PartialEq, Copy, Clone, Default, Eq, Hash, PartialOrd, Ord)]
+#[derive(PartialEq, Copy, Clone, Default, Eq, Hash, PartialOrd, Ord, Serialize)]
 pub struct Pos(pub u8);
 
 impl Pos {

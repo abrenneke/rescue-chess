@@ -1,7 +1,9 @@
+use serde::Serialize;
+
 use crate::{PieceType, Pos};
 
 /// A move that a chess piece can make.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct PieceMove {
     /// The type of piece that is moving
     pub piece_type: PieceType,
@@ -17,7 +19,7 @@ pub struct PieceMove {
 }
 
 /// The type of move a piece can make. Non-normal moves can store additional information, such as captured piece.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub enum MoveType {
     /// A move that has not been classified yet
     Unknown,

@@ -9,3 +9,4 @@ edition = "2021"
 anyhow = "1.0.79"
 colored = "2.1.0"
 fxhash = "0.2.1"
+serde = { version = "1.0.196", features = ["derive"] }
