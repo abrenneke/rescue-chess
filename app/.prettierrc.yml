@@ -1,5 +1,5 @@
 ﻿tabWidth: 2
-printWidth: 140
+printWidth: 120
 singleQuote: true
 semi: true
 plugins: ['prettier-plugin-svelte']
