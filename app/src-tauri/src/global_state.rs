@@ -1,19 +1,22 @@
-use std::{ops::Deref, sync::Mutex};
+use std::{
+    ops::Deref,
+    sync::{Arc, Mutex},
+};
 
 use rescue_chess::Position;
 
-pub struct GlobalState(Mutex<GlobalStateData>);
+pub struct GlobalState(pub Arc<Mutex<GlobalStateData>>);
 
 impl Default for GlobalState {
     fn default() -> Self {
-        GlobalState(Mutex::new(GlobalStateData::default()))
+        GlobalState(Arc::new(Mutex::new(GlobalStateData::default())))
     }
 }
 
 impl Deref for GlobalState {
-    type Target = Mutex<GlobalStateData>;
+    type Target = Arc<Mutex<GlobalStateData>>;
 
-    fn deref(&self) -> &Mutex<GlobalStateData> {
+    fn deref(&self) -> &Arc<Mutex<GlobalStateData>> {
         &self.0
     }
 }

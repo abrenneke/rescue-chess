@@ -5,6 +5,20 @@
   import { invoke } from '@tauri-apps/api/core';
   import PossibleMove from './PossibleMove.svelte';
   import { positionToXy, type PieceMove, isEnum } from './chess';
+  import { listen } from '@tauri-apps/api/event';
+
+  let blackMoveListener: ((move: PieceMove) => void) | undefined;
+
+  if (blackMoveListener == null) {
+    blackMoveListener = async (move) => {
+      console.log('received black move', move);
+      await applyMove(move);
+    };
+
+    listen('black_move', (event) => {
+      blackMoveListener!(event.payload as PieceMove);
+    });
+  }
 
   type Piece = {
     id: string;
@@ -71,7 +85,19 @@
 
     await invoke('move_piece', { fromX, fromY, toX, toY });
 
-    const from = pieces.find((p) => p.x === fromX && p.y === fromY)!;
+    applyMoveLocal(move);
+  }
+
+  function applyMoveLocal(move: PieceMove) {
+    const [fromX, fromY] = positionToXy(move.from);
+    const [toX, toY] = positionToXy(move.to);
+
+    const from = pieces.find((p) => p.x === fromX && p.y === fromY);
+
+    if (!from) {
+      console.dir(move);
+      throw new Error('Piece not found');
+    }
 
     if (isEnum(move.move_type, 'Capture')) {
       const to = pieces.find((p) => p.x === toX && p.y === toY)!;
@@ -140,6 +166,9 @@
 
     selectedPiece = undefined;
     possibleMovePositions = [];
+
+    console.log("waiting for black's move");
+    await invoke<PieceMove>('get_black_move', {});
   }
 
   function lerpPiece(piece: Piece, from: [number, number], to: [number, number], t: number) {

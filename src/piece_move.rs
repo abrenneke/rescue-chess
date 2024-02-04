@@ -48,6 +48,32 @@ pub enum MoveType {
     CapturePromotion(PieceType, PieceType),
 }
 
+impl PieceMove {
+    /// Inverts the move, so that it can be applied from the other player's perspective.
+    pub fn invert(&mut self) {
+        self.from = self.from.invert();
+        self.to = self.to.invert();
+
+        match &mut self.move_type {
+            MoveType::EnPassant(pos) => {
+                *pos = pos.invert();
+            }
+            MoveType::Castle(king, rook) => {
+                *king = king.invert();
+                *rook = rook.invert();
+            }
+            _ => {}
+        }
+    }
+
+    /// Returns a new move that is the inverse of this move, so that it can be applied from the other player's perspective.
+    pub fn inverted(&self) -> PieceMove {
+        let mut inverted = *self;
+        inverted.invert();
+        inverted
+    }
+}
+
 /// Displays the move in algebraic notation.
 impl std::fmt::Display for PieceMove {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

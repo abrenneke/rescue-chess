@@ -14,7 +14,8 @@ fn main() {
             commands::get_valid_positions_for,
             commands::reset,
             commands::get_position_fen,
-            commands::move_piece
+            commands::move_piece,
+            commands::get_black_move
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
