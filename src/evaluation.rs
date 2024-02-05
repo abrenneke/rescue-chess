@@ -18,6 +18,24 @@ pub fn evaluate_position(board: &Position) -> i32 {
         } else {
             -value
         };
+
+        let holding_value = match piece.holding {
+            Some(piece_type) => match piece_type {
+                PieceType::Pawn => 1,
+                PieceType::Knight => 3,
+                PieceType::Bishop => 3,
+                PieceType::Rook => 5,
+                PieceType::Queen => 9,
+                PieceType::King => 200,
+            },
+            None => 0,
+        };
+
+        score += if piece.color == Color::White {
+            holding_value
+        } else {
+            -holding_value
+        };
     }
 
     // TODO doubled, blocked, isolated pawns

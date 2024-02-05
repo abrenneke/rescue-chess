@@ -154,22 +154,96 @@ impl Position {
         }
     }
 
+    pub fn rescue_piece(&mut self, rescuer: Pos, rescued: Pos) -> Result<(), anyhow::Error> {
+        let rescuer_piece = match self.get_piece_at(rescuer) {
+            Some(rescuer) => rescuer,
+            None => {
+                return Err(anyhow::anyhow!(
+                    "No piece at rescuer position {}",
+                    rescuer.to_algebraic()
+                ))
+            }
+        };
+
+        let rescued_piece = match self.get_piece_at(rescued) {
+            Some(rescued) => rescued,
+            None => {
+                return Err(anyhow::anyhow!(
+                    "No piece at rescued position {}",
+                    rescued.to_algebraic()
+                ))
+            }
+        };
+
+        if let Some(_) = rescuer_piece.holding {
+            return Err(anyhow::anyhow!("Rescuer already holding a piece"));
+        }
+
+        if rescuer_piece.piece_type.can_hold(rescued_piece.piece_type) {
+            self.get_piece_at_mut(rescuer).unwrap().holding = Some(rescued_piece.piece_type);
+            self.remove_piece_at(rescued)?;
+
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Rescuer cannot hold rescued piece"))
+        }
+    }
+
+    pub fn drop_piece(&mut self, rescuer_pos: Pos, drop_pos: Pos) -> Result<(), anyhow::Error> {
+        let rescuer = match self.get_piece_at(rescuer_pos) {
+            Some(rescuer) => rescuer,
+            None => return Err(anyhow::anyhow!("No piece at rescuer position")),
+        };
+
+        let holding_type = match rescuer.holding {
+            Some(holding_type) => holding_type,
+            None => return Err(anyhow::anyhow!("Rescuer not holding a piece")),
+        };
+
+        if self.black_map.get(drop_pos) || self.white_map.get(drop_pos) {
+            return Err(anyhow::anyhow!("Position occupied"));
+        }
+
+        self.add_piece(Piece::new(holding_type, rescuer.color, drop_pos))?;
+
+        self.get_piece_at_mut(rescuer_pos).unwrap().holding = None;
+
+        Ok(())
+    }
+
     /// Moves a piece from one position to another.
-    pub fn move_piece(&mut self, from: Pos, to: Pos) {
+    pub fn move_piece(&mut self, from: Pos, to: Pos) -> Result<(), anyhow::Error> {
+        if self.white_map.get(to) || self.black_map.get(to) {
+            return Err(anyhow::anyhow!("Position occupied"));
+        }
+
         self.get_piece_at_mut(from).unwrap().position = to;
         self.calc_changes();
+
+        Ok(())
     }
 
     /// Removes the piece at a specific position.
-    pub fn remove_piece_at(&mut self, position: Pos) {
-        self.pieces.retain(|p| p.position != position);
-        self.calc_changes();
+    pub fn remove_piece_at(&mut self, position: Pos) -> Result<(), anyhow::Error> {
+        if let Some(index) = self.position_lookup[position.0 as usize] {
+            self.pieces.remove(index as usize);
+            self.calc_changes();
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("No piece at position"))
+        }
     }
 
     /// Adds a piece to the board.
-    pub fn add_piece(&mut self, piece: Piece) {
+    pub fn add_piece(&mut self, piece: Piece) -> Result<(), anyhow::Error> {
+        if self.white_map.get(piece.position) || self.black_map.get(piece.position) {
+            return Err(anyhow::anyhow!("Position occupied"));
+        }
+
         self.pieces.push(piece);
         self.calc_changes();
+
+        Ok(())
     }
 
     /// Returns true if white is in checkmate. Returns an error if the position is invalid (no king)
@@ -232,6 +306,37 @@ impl Position {
         for piece in self.pieces.iter().filter(|p| p.color == Color::White) {
             let legal_moves = piece.get_legal_moves(self.white_map, self.black_map);
 
+            // Don't move, must rescue or drop
+            for dir in piece.position.get_cardinal_adjacent().into_iter() {
+                match piece.holding {
+                    Some(_) => {
+                        if let None = self.get_piece_at(dir) {
+                            moves.push(PieceMove {
+                                from: piece.position,
+                                to: piece.position,
+                                move_type: MoveType::NormalAndDrop(dir),
+                                piece_type: piece.piece_type,
+                            });
+                        }
+                    }
+                    None => {
+                        if let Some(piece_at_pos) = self.get_piece_at(dir) {
+                            if piece_at_pos.color == Color::White
+                                && piece.piece_type.can_hold(piece_at_pos.piece_type)
+                            {
+                                moves.push(PieceMove {
+                                    from: piece.position,
+                                    to: piece.position,
+                                    move_type: MoveType::NormalAndRescue(dir),
+                                    piece_type: piece.piece_type,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Move to a spot, maybe capture, maybe rescue, maybe drop
             for to in legal_moves.iter() {
                 if self.white_map.get(to) {
                     panic!("Illegal move");
@@ -251,6 +356,73 @@ impl Position {
                         move_type: MoveType::Normal,
                         piece_type: piece.piece_type,
                     });
+                }
+
+                match piece.holding {
+                    // Drop a rescued piece at an adjacent position
+                    Some(_) => {
+                        for dir in to.get_cardinal_adjacent().into_iter() {
+                            if let None = self.get_piece_at(dir) {
+                                if self.black_map.get(to) {
+                                    moves.push(PieceMove {
+                                        from: piece.position,
+                                        to,
+                                        move_type: MoveType::CaptureAndDrop {
+                                            captured_type: self
+                                                .get_piece_at(to)
+                                                .unwrap()
+                                                .piece_type,
+                                            drop_pos: dir,
+                                        },
+                                        piece_type: piece.piece_type,
+                                    });
+                                } else {
+                                    moves.push(PieceMove {
+                                        from: piece.position,
+                                        to,
+                                        move_type: MoveType::NormalAndDrop(dir),
+                                        piece_type: piece.piece_type,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    // Rescue adjacent pieces of the same color
+                    None => {
+                        for dir in to.get_cardinal_adjacent().into_iter() {
+                            if let Some(piece_at_pos) = self.get_piece_at(dir) {
+                                if piece_at_pos == piece {
+                                    continue;
+                                }
+
+                                if piece_at_pos.color == Color::White
+                                    && piece.piece_type.can_hold(piece_at_pos.piece_type)
+                                {
+                                    if self.black_map.get(to) {
+                                        moves.push(PieceMove {
+                                            from: piece.position,
+                                            to,
+                                            move_type: MoveType::CaptureAndRescue {
+                                                captured_type: self
+                                                    .get_piece_at(to)
+                                                    .unwrap()
+                                                    .piece_type,
+                                                rescued_pos: dir,
+                                            },
+                                            piece_type: piece.piece_type,
+                                        });
+                                    } else {
+                                        moves.push(PieceMove {
+                                            from: piece.position,
+                                            to,
+                                            move_type: MoveType::NormalAndRescue(dir),
+                                            piece_type: piece.piece_type,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -294,7 +466,12 @@ impl Position {
 
         let legal_moves = piece.get_legal_moves(self.white_map, self.black_map);
 
-        if !legal_moves.get(mv.to) {
+        let is_rescue_or_drop = match mv.move_type {
+            MoveType::NormalAndRescue(_) | MoveType::NormalAndDrop(_) => true,
+            _ => false,
+        };
+
+        if !legal_moves.get(mv.to) && !is_rescue_or_drop {
             return Err(anyhow::anyhow!("Illegal move"));
         }
 
@@ -303,24 +480,55 @@ impl Position {
                 return Err(anyhow::anyhow!("Unknown move type"));
             }
             MoveType::Normal => {
-                self.move_piece(mv.from, mv.to);
+                self.move_piece(mv.from, mv.to)?;
+            }
+            MoveType::NormalAndRescue(pos) => {
+                if mv.from != mv.to {
+                    self.move_piece(mv.from, mv.to)?;
+                }
+                self.rescue_piece(mv.to, pos)?;
+            }
+            MoveType::NormalAndDrop(pos) => {
+                if mv.from != mv.to {
+                    self.move_piece(mv.from, mv.to)?;
+                }
+                self.drop_piece(mv.to, pos)?;
+            }
+            MoveType::CaptureAndRescue {
+                captured_type: _,
+                rescued_pos,
+            } => {
+                self.remove_piece_at(mv.to)?;
+                self.move_piece(mv.from, mv.to)?;
+                self.rescue_piece(mv.to, rescued_pos)?;
+            }
+            MoveType::CaptureAndDrop {
+                captured_type: _,
+                drop_pos,
+            } => {
+                self.remove_piece_at(mv.to)?;
+                self.move_piece(mv.from, mv.to)?;
+                self.drop_piece(mv.to, drop_pos)?;
             }
             MoveType::Capture(_) => {
-                self.remove_piece_at(mv.to);
-                self.move_piece(mv.from, mv.to);
+                self.remove_piece_at(mv.to)?;
+                self.move_piece(mv.from, mv.to)?;
             }
             MoveType::EnPassant(pos) => {
-                self.remove_piece_at(pos);
-                self.move_piece(mv.from, mv.to);
+                self.remove_piece_at(pos)?;
+                self.move_piece(mv.from, mv.to)?;
             }
-            MoveType::Castle(_king_pos, _rook_pos) => {
+            MoveType::Castle { king: _, rook: _ } => {
                 todo!();
             }
             MoveType::Promotion(piece_type) => {
-                self.move_piece(mv.from, mv.to);
+                self.move_piece(mv.from, mv.to)?;
                 self.get_piece_at_mut(mv.from).unwrap().piece_type = piece_type;
             }
-            MoveType::CapturePromotion(_promotion, _captured) => {
+            MoveType::CapturePromotion {
+                captured: _,
+                promoted_to: _,
+            } => {
                 todo!();
             }
         }
@@ -340,24 +548,57 @@ impl Position {
                 return Err(anyhow::anyhow!("Unknown move type"));
             }
             MoveType::Normal => {
-                self.get_piece_at_mut(mv.to).unwrap().position = mv.from;
+                self.move_piece(mv.to, mv.from)?;
+            }
+            MoveType::NormalAndRescue(pos) => {
+                self.drop_piece(mv.to, pos)?;
+
+                if mv.from != mv.to {
+                    self.move_piece(mv.to, mv.from)?;
+                }
+            }
+            MoveType::NormalAndDrop(pos) => {
+                self.rescue_piece(piece.position, pos)?;
+
+                if mv.from != mv.to {
+                    self.move_piece(mv.to, mv.from)?;
+                }
             }
             MoveType::Capture(captured) => {
-                self.get_piece_at_mut(mv.to).unwrap().position = mv.from;
-                self.add_piece(Piece::new(captured, color, mv.to));
+                self.move_piece(mv.to, mv.from)?;
+                self.add_piece(Piece::new(captured, color, mv.to))?;
+            }
+            MoveType::CaptureAndRescue {
+                captured_type,
+                rescued_pos,
+            } => {
+                self.drop_piece(mv.to, rescued_pos)?;
+                self.move_piece(mv.to, mv.from)?;
+                self.add_piece(Piece::new(captured_type, color, mv.to))?;
+            }
+            MoveType::CaptureAndDrop {
+                captured_type,
+                drop_pos,
+            } => {
+                self.rescue_piece(piece.position, drop_pos)?;
+                self.move_piece(mv.to, mv.from)?;
+                self.add_piece(Piece::new(captured_type, color, mv.to))?;
             }
             MoveType::EnPassant(pos) => {
-                self.get_piece_at_mut(mv.to).unwrap().position = mv.from;
-                self.add_piece(Piece::new(PieceType::Pawn, color, pos));
+                self.move_piece(mv.to, mv.from)?;
+                self.add_piece(Piece::new(PieceType::Pawn, color, pos))?;
             }
-            MoveType::Castle(_king_pos, _rook_pos) => {
+            MoveType::Castle { king: _, rook: _ } => {
                 todo!();
             }
             MoveType::Promotion(_) => {
-                self.get_piece_at_mut(mv.to).unwrap().position = mv.from;
+                self.move_piece(mv.to, mv.from)?;
                 self.get_piece_at_mut(mv.to).unwrap().piece_type = PieceType::Pawn;
             }
-            MoveType::CapturePromotion(_, _) => {
+            MoveType::CapturePromotion {
+                captured: _,
+                promoted_to: _,
+            } => {
                 todo!();
             }
         }
@@ -398,7 +639,7 @@ impl std::convert::From<&'static str> for Position {
 
 #[cfg(test)]
 mod tests {
-    use crate::Position;
+    use crate::{piece_move::MoveType, PieceMove, PieceType, Position};
 
     #[test]
     pub fn parse_fen_1() {
@@ -461,5 +702,44 @@ mod tests {
         for mv in moves {
             println!("{}", mv);
         }
+    }
+
+    #[test]
+    fn possible_moves_includes_rescue() {
+        let position: Position = "8/8/8/8/8/8/8/3QK3 w - - 0 1".into();
+
+        let moves = position.get_all_moves_unchecked();
+
+        for mv in moves {
+            println!("{}", mv);
+        }
+    }
+
+    #[test]
+    fn all_possible_moves_start_position() {
+        let position: Position = Position::start_position();
+
+        let moves = position.get_all_moves_unchecked();
+
+        for mv in moves {
+            println!("{}", mv);
+        }
+    }
+
+    #[test]
+    fn rescue_bug() {
+        let mut position: Position = "8/8/8/8/8/8/P7/1P6 w - - 0 1".into();
+        println!("{}", position.to_board_string());
+
+        let mv = PieceMove {
+            from: "b1".into(),
+            to: "b2".into(),
+            move_type: MoveType::NormalAndRescue("a2".into()),
+            piece_type: PieceType::Pawn,
+        };
+
+        position.apply_move(mv).unwrap();
+
+        println!("{}", position.to_board_string());
     }
 }

@@ -16,7 +16,7 @@ impl Position {
     /// let position = Position::parse_from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
     /// ```
     pub fn parse_from_fen(notation: &str) -> Result<Position, anyhow::Error> {
-        let mut pieces = Vec::new();
+        let mut pieces: Vec<Piece> = Vec::new();
         let mut position = Pos(0);
 
         let mut castling_rights = CastlingRights {
@@ -32,103 +32,181 @@ impl Position {
             anyhow::anyhow!("FEN notation must contain piece placement information")
         })?;
 
+        let mut holding = false;
+
         for character in piece_placement.chars() {
             match character {
                 'P' => {
-                    pieces.push(Piece {
-                        piece_type: PieceType::Pawn,
-                        color: Color::White,
-                        position,
-                    });
+                    if holding {
+                        pieces.last_mut().unwrap().holding = Some(PieceType::Pawn);
+                        holding = false;
+                    } else {
+                        pieces.push(Piece {
+                            piece_type: PieceType::Pawn,
+                            color: Color::White,
+                            position,
+                            holding: None,
+                        });
+                    }
+
                     position += 1;
                 }
                 'N' => {
-                    pieces.push(Piece {
-                        piece_type: PieceType::Knight,
-                        color: Color::White,
-                        position,
-                    });
+                    if holding {
+                        pieces.last_mut().unwrap().holding = Some(PieceType::Knight);
+                        holding = false;
+                    } else {
+                        pieces.push(Piece {
+                            piece_type: PieceType::Knight,
+                            color: Color::White,
+                            position,
+                            holding: None,
+                        });
+                    }
                     position += 1;
                 }
                 'B' => {
-                    pieces.push(Piece {
-                        piece_type: PieceType::Bishop,
-                        color: Color::White,
-                        position,
-                    });
+                    if holding {
+                        pieces.last_mut().unwrap().holding = Some(PieceType::Bishop);
+                        holding = false;
+                    } else {
+                        pieces.push(Piece {
+                            piece_type: PieceType::Bishop,
+                            color: Color::White,
+                            position,
+                            holding: None,
+                        });
+                    }
                     position += 1;
                 }
                 'R' => {
-                    pieces.push(Piece {
-                        piece_type: PieceType::Rook,
-                        color: Color::White,
-                        position,
-                    });
+                    if holding {
+                        pieces.last_mut().unwrap().holding = Some(PieceType::Rook);
+                        holding = false;
+                    } else {
+                        pieces.push(Piece {
+                            piece_type: PieceType::Rook,
+                            color: Color::White,
+                            position,
+                            holding: None,
+                        });
+                    }
                     position += 1;
                 }
                 'Q' => {
-                    pieces.push(Piece {
-                        piece_type: PieceType::Queen,
-                        color: Color::White,
-                        position,
-                    });
+                    if holding {
+                        pieces.last_mut().unwrap().holding = Some(PieceType::Queen);
+                        holding = false;
+                    } else {
+                        pieces.push(Piece {
+                            piece_type: PieceType::Queen,
+                            color: Color::White,
+                            position,
+                            holding: None,
+                        });
+                    }
                     position += 1;
                 }
                 'K' => {
-                    pieces.push(Piece {
-                        piece_type: PieceType::King,
-                        color: Color::White,
-                        position,
-                    });
+                    if holding {
+                        pieces.last_mut().unwrap().holding = Some(PieceType::King);
+                        holding = false;
+                    } else {
+                        pieces.push(Piece {
+                            piece_type: PieceType::King,
+                            color: Color::White,
+                            position,
+                            holding: None,
+                        });
+                    }
                     position += 1;
                 }
                 'p' => {
-                    pieces.push(Piece {
-                        piece_type: PieceType::Pawn,
-                        color: Color::Black,
-                        position,
-                    });
+                    if holding {
+                        pieces.last_mut().unwrap().holding = Some(PieceType::Pawn);
+                        holding = false;
+                    } else {
+                        pieces.push(Piece {
+                            piece_type: PieceType::Pawn,
+                            color: Color::Black,
+                            position,
+                            holding: None,
+                        });
+                    }
                     position += 1;
                 }
                 'n' => {
-                    pieces.push(Piece {
-                        piece_type: PieceType::Knight,
-                        color: Color::Black,
-                        position,
-                    });
+                    if holding {
+                        pieces.last_mut().unwrap().holding = Some(PieceType::Knight);
+                        holding = false;
+                    } else {
+                        pieces.push(Piece {
+                            piece_type: PieceType::Knight,
+                            color: Color::Black,
+                            position,
+                            holding: None,
+                        });
+                    }
                     position += 1;
                 }
                 'b' => {
-                    pieces.push(Piece {
-                        piece_type: PieceType::Bishop,
-                        color: Color::Black,
-                        position,
-                    });
+                    if holding {
+                        pieces.last_mut().unwrap().holding = Some(PieceType::Bishop);
+                        holding = false;
+                    } else {
+                        pieces.push(Piece {
+                            piece_type: PieceType::Bishop,
+                            color: Color::Black,
+                            position,
+                            holding: None,
+                        });
+                    }
                     position += 1;
                 }
                 'r' => {
-                    pieces.push(Piece {
-                        piece_type: PieceType::Rook,
-                        color: Color::Black,
-                        position,
-                    });
+                    if holding {
+                        pieces.last_mut().unwrap().holding = Some(PieceType::Rook);
+                        holding = false;
+                    } else {
+                        pieces.push(Piece {
+                            piece_type: PieceType::Rook,
+                            color: Color::Black,
+                            position,
+                            holding: None,
+                        });
+                    }
                     position += 1;
                 }
                 'q' => {
-                    pieces.push(Piece {
-                        piece_type: PieceType::Queen,
-                        color: Color::Black,
-                        position,
-                    });
+                    if holding {
+                        pieces.last_mut().unwrap().holding = Some(PieceType::Queen);
+                        holding = false;
+                    } else {
+                        pieces.push(Piece {
+                            piece_type: PieceType::Queen,
+                            color: Color::Black,
+                            position,
+                            holding: None,
+                        });
+                    }
                     position += 1;
                 }
                 'k' => {
-                    pieces.push(Piece {
-                        piece_type: PieceType::King,
-                        color: Color::Black,
-                        position,
-                    });
+                    if holding {
+                        pieces.last_mut().unwrap().holding = Some(PieceType::King);
+                        holding = false;
+                    } else {
+                        pieces.push(Piece {
+                            piece_type: PieceType::King,
+                            color: Color::Black,
+                            position,
+                            holding: None,
+                        });
+                    }
                     position += 1;
+                }
+                'x' => {
+                    holding = true;
                 }
                 '1'..='8' => {
                     position += character.to_digit(10).unwrap() as u8;
@@ -252,6 +330,29 @@ impl Position {
                     };
 
                     fen.push(character);
+
+                    if let Some(holding) = piece.holding {
+                        fen.push('x');
+
+                        match piece.color {
+                            Color::White => fen.push(match holding {
+                                PieceType::Pawn => 'P',
+                                PieceType::Knight => 'N',
+                                PieceType::Bishop => 'B',
+                                PieceType::Rook => 'R',
+                                PieceType::Queen => 'Q',
+                                PieceType::King => 'K',
+                            }),
+                            Color::Black => fen.push(match holding {
+                                PieceType::Pawn => 'p',
+                                PieceType::Knight => 'n',
+                                PieceType::Bishop => 'b',
+                                PieceType::Rook => 'r',
+                                PieceType::Queen => 'q',
+                                PieceType::King => 'k',
+                            }),
+                        }
+                    }
                 } else {
                     empty += 1;
                 }

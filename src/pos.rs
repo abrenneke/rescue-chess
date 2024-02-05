@@ -1,10 +1,13 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut},
+    str::FromStr,
+};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::bitboard::Bitboard;
 
-#[derive(PartialEq, Copy, Clone, Default, Eq, Hash, PartialOrd, Ord, Serialize)]
+#[derive(PartialEq, Copy, Clone, Default, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Pos(pub u8);
 
 impl Pos {
@@ -180,6 +183,30 @@ impl Pos {
     pub fn as_tuple(&self) -> (u8, u8) {
         (self.0 % 8, self.0 / 8)
     }
+
+    pub fn get_cardinal_adjacent(&self) -> Vec<Pos> {
+        let mut adjacent = Vec::with_capacity(4);
+
+        let (x, y) = self.as_tuple();
+
+        if x > 0 {
+            adjacent.push(Pos::xy(x - 1, y));
+        }
+
+        if x < 7 {
+            adjacent.push(Pos::xy(x + 1, y));
+        }
+
+        if y > 0 {
+            adjacent.push(Pos::xy(x, y - 1));
+        }
+
+        if y < 7 {
+            adjacent.push(Pos::xy(x, y + 1));
+        }
+
+        adjacent
+    }
 }
 
 impl Deref for Pos {
@@ -320,5 +347,13 @@ impl From<Pos> for Bitboard {
 impl From<&'static str> for Pos {
     fn from(s: &'static str) -> Pos {
         Pos::from_algebraic(s).unwrap()
+    }
+}
+
+impl FromStr for Pos {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Pos::from_algebraic(s)
     }
 }

@@ -1,6 +1,10 @@
+use serde::Serialize;
 use std::thread;
 
-use rescue_chess::{search::negamax_hashing, Color, PieceMove};
+use rescue_chess::{
+    search::{alpha_beta, negamax_hashing, search_results::SearchResults},
+    Color, PieceMove,
+};
 use tauri::{command, Manager, State};
 
 use crate::global_state::GlobalState;
@@ -42,19 +46,10 @@ pub fn get_position_fen(state: State<GlobalState>) -> String {
 }
 
 #[command]
-pub fn move_piece(
-    from_x: u8,
-    from_y: u8,
-    to_x: u8,
-    to_y: u8,
-    state: State<GlobalState>,
-) -> Result<(), String> {
+pub fn move_piece(mv: PieceMove, state: State<GlobalState>) -> Result<(), String> {
     let mut gs = state.lock().unwrap();
 
-    let from = (from_x, from_y).into();
-    let to = (to_x, to_y).into();
-
-    match gs.position.get_piece_at(from) {
+    match gs.position.get_piece_at(mv.from) {
         Some(piece) => match piece.color {
             Color::White => {
                 let all_moves = gs
@@ -64,7 +59,7 @@ pub fn move_piece(
 
                 let matching_move = all_moves
                     .into_iter()
-                    .find(|m| m.from == from && m.to == to)
+                    .find(|m| *m == mv)
                     .ok_or_else(|| "Invalid move".to_string())?;
 
                 gs.position
@@ -74,8 +69,7 @@ pub fn move_piece(
             Color::Black => {
                 // Invert the position, apply the move, and invert back
                 let mut inverted_position = gs.position.inverted();
-                let from = from.invert();
-                let to = to.invert();
+                let mv = mv.inverted();
 
                 let all_moves = inverted_position
                     .get_all_legal_moves()
@@ -83,7 +77,7 @@ pub fn move_piece(
 
                 let matching_move = all_moves
                     .into_iter()
-                    .find(|m| m.from == from && m.to == to)
+                    .find(|m| *m == mv)
                     .ok_or_else(|| "Invalid move".to_string())?;
 
                 inverted_position
@@ -99,22 +93,29 @@ pub fn move_piece(
     Ok(())
 }
 
+#[derive(Clone, Serialize)]
+struct BlackMoveResponse {
+    results: SearchResults,
+    move_from_whites_perspective: PieceMove,
+}
+
 #[command]
 pub fn get_black_move(state: State<GlobalState>, app: tauri::AppHandle) -> Result<(), String> {
     let gs = state.lock().unwrap();
     let from_black = gs.position.inverted();
 
     thread::spawn(move || -> () {
-        let (mv, _) = negamax_hashing::search(&from_black, 4);
-        let mv = match mv {
-            Some(mv) => mv,
-            None => panic!("No move found"),
-        };
+        let results = alpha_beta::search(&from_black, 4);
+        let move_from_whites_perspective = results.best_move.inverted();
 
-        let move_from_whites_perspective = mv.inverted();
-
-        app.emit("black_move", move_from_whites_perspective)
-            .unwrap();
+        app.emit(
+            "black_move",
+            BlackMoveResponse {
+                results,
+                move_from_whites_perspective,
+            },
+        )
+        .unwrap();
     });
 
     Ok(())

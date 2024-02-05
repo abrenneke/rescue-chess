@@ -8,9 +8,9 @@ pub mod queen;
 pub mod rook;
 
 use colored::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, PartialEq, Copy, Clone, Eq, Hash, Serialize)]
+#[derive(Debug, PartialEq, Copy, Clone, Eq, Hash, Serialize, Deserialize)]
 pub enum PieceType {
     Pawn,
     Knight,
@@ -18,6 +18,36 @@ pub enum PieceType {
     Rook,
     Queen,
     King,
+}
+
+impl PieceType {
+    pub fn can_hold(&self, other: PieceType) -> bool {
+        match self {
+            // Right now pieces can rescue pieces of the same type, but maybe
+            // pawns couldn't hold other pawns, or pieces couldn't hold same type pieces
+            PieceType::Pawn => match other {
+                PieceType::Pawn => true,
+                _ => false,
+            },
+            PieceType::Rook => match other {
+                PieceType::Pawn | PieceType::Rook | PieceType::Knight | PieceType::Bishop => true,
+                _ => false,
+            },
+            PieceType::Knight => match other {
+                PieceType::Pawn | PieceType::Knight | PieceType::Bishop => true,
+                _ => false,
+            },
+            PieceType::Bishop => match other {
+                PieceType::Pawn | PieceType::Bishop => true,
+                _ => false,
+            },
+            PieceType::Queen => match other {
+                PieceType::King => false,
+                _ => true,
+            },
+            PieceType::King => true,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Copy, Clone, Hash, Eq, Serialize)]
@@ -31,6 +61,9 @@ pub struct Piece {
     pub piece_type: PieceType,
     pub color: Color,
     pub position: Pos,
+
+    /// For Rescue Chess, the friendly piece that this piece is holding
+    pub holding: Option<PieceType>,
 }
 
 impl Piece {
@@ -39,6 +72,7 @@ impl Piece {
             piece_type,
             color,
             position,
+            holding: None,
         }
     }
 
@@ -47,6 +81,7 @@ impl Piece {
             piece_type,
             color: Color::White,
             position,
+            holding: None,
         }
     }
 

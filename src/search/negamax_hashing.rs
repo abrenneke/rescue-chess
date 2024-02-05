@@ -39,6 +39,7 @@ pub fn negamax_hashing(
     let moves = match moves {
         Ok(moves) => moves,
         Err(err) => {
+            println!("{}", position.to_board_string());
             panic!("Error getting legal moves: {}", err);
         }
     };
@@ -76,9 +77,9 @@ pub mod tests {
     use super::search;
 
     #[test]
-    pub fn negamax_1() {
+    pub fn negamax_hashing_search() {
         let position: Position = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR".into();
-        let (best_move, score) = search(&position, 8);
+        let (best_move, score) = search(&position, 3);
 
         println!("{} ({})", best_move.unwrap(), score);
     }

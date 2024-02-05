@@ -4,19 +4,19 @@
   import { nanoid } from 'nanoid';
   import { invoke } from '@tauri-apps/api/core';
   import PossibleMove from './PossibleMove.svelte';
-  import { positionToXy, type PieceMove, isEnum } from './chess';
+  import { positionToXy, type PieceMove, type BlackMoveResponse } from './chess';
   import { listen } from '@tauri-apps/api/event';
 
-  let blackMoveListener: ((move: PieceMove) => void) | undefined;
+  let blackMoveListener: ((response: BlackMoveResponse) => void) | undefined;
 
   if (blackMoveListener == null) {
-    blackMoveListener = async (move) => {
-      console.log('received black move', move);
-      await applyMove(move);
+    blackMoveListener = async (response) => {
+      console.log('received black move', response);
+      await applyMove(response.move_from_whites_perspective);
     };
 
     listen('black_move', (event) => {
-      blackMoveListener!(event.payload as PieceMove);
+      blackMoveListener!(event.payload as BlackMoveResponse);
     });
   }
 
@@ -28,6 +28,7 @@
     y: number;
     displayX: number;
     displayY: number;
+    holding?: 'k' | 'q' | 'b' | 'n' | 'r' | 'p';
   };
 
   export let board: HTMLDivElement;
@@ -80,10 +81,7 @@
   }
 
   async function applyMove(move: PieceMove) {
-    const [fromX, fromY] = positionToXy(move.from);
-    const [toX, toY] = positionToXy(move.to);
-
-    await invoke('move_piece', { fromX, fromY, toX, toY });
+    await invoke('move_piece', { mv: move });
 
     applyMoveLocal(move);
   }
@@ -99,9 +97,50 @@
       throw new Error('Piece not found');
     }
 
-    if (isEnum(move.move_type, 'Capture')) {
+    const isCapture =
+      move.move_type.type === 'Capture' ||
+      move.move_type.type === 'CaptureAndRescue' ||
+      move.move_type.type === 'CaptureAndDrop';
+
+    if (isCapture) {
       const to = pieces.find((p) => p.x === toX && p.y === toY)!;
       pieces = pieces.filter((p) => p.id !== to.id);
+    }
+
+    if (move.move_type.type === 'NormalAndRescue') {
+      const [rescuedX, rescuedY] = positionToXy(move.move_type.value);
+      const rescued = pieces.find((p) => p.x === rescuedX && p.y === rescuedY)!;
+      pieces = pieces.filter((p) => p.id !== rescued.id);
+      from.holding = rescued.type;
+    } else if (move.move_type.type === 'CaptureAndRescue') {
+      const [rescuedX, rescuedY] = positionToXy(move.move_type.value.rescued_pos);
+      const rescued = pieces.find((p) => p.x === rescuedX && p.y === rescuedY)!;
+      pieces = pieces.filter((p) => p.id !== rescued.id);
+      from.holding = rescued.type;
+    } else if (move.move_type.type === 'NormalAndDrop') {
+      const [dropX, dropY] = positionToXy(move.move_type.value);
+      pieces.push({
+        id: nanoid(),
+        type: from.holding!,
+        color: from.color,
+        x: dropX,
+        y: dropY,
+        displayX: dropX,
+        displayY: dropY,
+      });
+      from.holding = undefined;
+    } else if (move.move_type.type === 'CaptureAndDrop') {
+      const [dropX, dropY] = positionToXy(move.move_type.value.drop_pos);
+      pieces.push({
+        id: nanoid(),
+        type: from.holding!,
+        color: from.color,
+        x: dropX,
+        y: dropY,
+        displayX: dropX,
+        displayY: dropY,
+      });
+      from.holding = undefined;
     }
 
     from.x = toX;
@@ -139,10 +178,17 @@
 
     possibleMovePositions = possibleMoves.map((move) => {
       const [x, y] = positionToXy(move.to);
+      const isCapture =
+        move.move_type.type === 'Capture' ||
+        move.move_type.type === 'CaptureAndRescue' ||
+        move.move_type.type === 'CaptureAndDrop' ||
+        move.move_type.type === 'EnPassant' ||
+        move.move_type.type === 'CapturePromotion';
+
       return {
         x,
         y,
-        type: move.move_type === 'Normal' ? 'normal' : isEnum(move.move_type, 'Capture') ? 'capture' : 'normal',
+        type: isCapture ? 'capture' : 'normal',
       };
     });
   }
@@ -168,7 +214,7 @@
     possibleMovePositions = [];
 
     console.log("waiting for black's move");
-    await invoke<PieceMove>('get_black_move', {});
+    await invoke<BlackMoveResponse>('get_black_move', {});
   }
 
   function lerpPiece(piece: Piece, from: [number, number], to: [number, number], t: number) {
