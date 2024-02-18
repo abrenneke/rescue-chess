@@ -32,7 +32,7 @@ pub struct CastlingRights {
 #[derive(Clone, PartialEq, Eq)]
 pub struct Position {
     /// The pieces on the board
-    pub pieces: Vec<Piece>,
+    pub pieces: arrayvec::ArrayVec<Piece, 32>,
 
     // Active color is always white for our purposes
     pub castling_rights: CastlingRights,
@@ -89,7 +89,7 @@ impl Position {
         let position_lookup = calc_position_lookup(&pieces);
 
         Position {
-            pieces,
+            pieces: pieces.into_iter().collect(),
             castling_rights,
             en_passant,
             halfmove_clock,
@@ -123,7 +123,7 @@ impl Position {
 
     /// When any piece has changed, this function should be called to
     /// recalculate the bitboards and position lookup.
-    fn calc_changes(&mut self) {
+    pub fn calc_changes(&mut self) {
         self.white_map = color_as_bitboard(&self.pieces, Color::White);
         self.black_map = color_as_bitboard(&self.pieces, Color::Black);
         self.position_lookup = calc_position_lookup(&self.pieces);
@@ -301,35 +301,37 @@ impl Position {
     /// Gets all moves that are possible by white, without checking for
     /// check, use this to check whether a king is in check, etc.
     pub fn get_all_moves_unchecked(&self) -> Vec<PieceMove> {
-        let mut moves = Vec::new();
+        let mut moves = Vec::with_capacity(self.pieces.len() * 8);
 
         for piece in self.pieces.iter().filter(|p| p.color == Color::White) {
             let legal_moves = piece.get_legal_moves(self.white_map, self.black_map);
 
             // Don't move, must rescue or drop
             for dir in piece.position.get_cardinal_adjacent().into_iter() {
-                match piece.holding {
-                    Some(_) => {
-                        if let None = self.get_piece_at(dir) {
-                            moves.push(PieceMove {
-                                from: piece.position,
-                                to: piece.position,
-                                move_type: MoveType::NormalAndDrop(dir),
-                                piece_type: piece.piece_type,
-                            });
-                        }
-                    }
-                    None => {
-                        if let Some(piece_at_pos) = self.get_piece_at(dir) {
-                            if piece_at_pos.color == Color::White
-                                && piece.piece_type.can_hold(piece_at_pos.piece_type)
-                            {
+                if let Some(dir) = dir {
+                    match piece.holding {
+                        Some(_) => {
+                            if let None = self.get_piece_at(dir) {
                                 moves.push(PieceMove {
                                     from: piece.position,
                                     to: piece.position,
-                                    move_type: MoveType::NormalAndRescue(dir),
+                                    move_type: MoveType::NormalAndDrop(dir),
                                     piece_type: piece.piece_type,
                                 });
+                            }
+                        }
+                        None => {
+                            if let Some(piece_at_pos) = self.get_piece_at(dir) {
+                                if piece_at_pos.color == Color::White
+                                    && piece.piece_type.can_hold(piece_at_pos.piece_type)
+                                {
+                                    moves.push(PieceMove {
+                                        from: piece.position,
+                                        to: piece.position,
+                                        move_type: MoveType::NormalAndRescue(dir),
+                                        piece_type: piece.piece_type,
+                                    });
+                                }
                             }
                         }
                     }
@@ -362,52 +364,18 @@ impl Position {
                     // Drop a rescued piece at an adjacent position
                     Some(_) => {
                         for dir in to.get_cardinal_adjacent().into_iter() {
-                            if let None = self.get_piece_at(dir) {
-                                if self.black_map.get(to) {
-                                    moves.push(PieceMove {
-                                        from: piece.position,
-                                        to,
-                                        move_type: MoveType::CaptureAndDrop {
-                                            captured_type: self
-                                                .get_piece_at(to)
-                                                .unwrap()
-                                                .piece_type,
-                                            drop_pos: dir,
-                                        },
-                                        piece_type: piece.piece_type,
-                                    });
-                                } else {
-                                    moves.push(PieceMove {
-                                        from: piece.position,
-                                        to,
-                                        move_type: MoveType::NormalAndDrop(dir),
-                                        piece_type: piece.piece_type,
-                                    });
-                                }
-                            }
-                        }
-                    }
-                    // Rescue adjacent pieces of the same color
-                    None => {
-                        for dir in to.get_cardinal_adjacent().into_iter() {
-                            if let Some(piece_at_pos) = self.get_piece_at(dir) {
-                                if piece_at_pos == piece {
-                                    continue;
-                                }
-
-                                if piece_at_pos.color == Color::White
-                                    && piece.piece_type.can_hold(piece_at_pos.piece_type)
-                                {
+                            if let Some(dir) = dir {
+                                if let None = self.get_piece_at(dir) {
                                     if self.black_map.get(to) {
                                         moves.push(PieceMove {
                                             from: piece.position,
                                             to,
-                                            move_type: MoveType::CaptureAndRescue {
+                                            move_type: MoveType::CaptureAndDrop {
                                                 captured_type: self
                                                     .get_piece_at(to)
                                                     .unwrap()
                                                     .piece_type,
-                                                rescued_pos: dir,
+                                                drop_pos: dir,
                                             },
                                             piece_type: piece.piece_type,
                                         });
@@ -415,9 +383,47 @@ impl Position {
                                         moves.push(PieceMove {
                                             from: piece.position,
                                             to,
-                                            move_type: MoveType::NormalAndRescue(dir),
+                                            move_type: MoveType::NormalAndDrop(dir),
                                             piece_type: piece.piece_type,
                                         });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Rescue adjacent pieces of the same color
+                    None => {
+                        for dir in to.get_cardinal_adjacent().into_iter() {
+                            if let Some(dir) = dir {
+                                if let Some(piece_at_pos) = self.get_piece_at(dir) {
+                                    if piece_at_pos == piece {
+                                        continue;
+                                    }
+
+                                    if piece_at_pos.color == Color::White
+                                        && piece.piece_type.can_hold(piece_at_pos.piece_type)
+                                    {
+                                        if self.black_map.get(to) {
+                                            moves.push(PieceMove {
+                                                from: piece.position,
+                                                to,
+                                                move_type: MoveType::CaptureAndRescue {
+                                                    captured_type: self
+                                                        .get_piece_at(to)
+                                                        .unwrap()
+                                                        .piece_type,
+                                                    rescued_pos: dir,
+                                                },
+                                                piece_type: piece.piece_type,
+                                            });
+                                        } else {
+                                            moves.push(PieceMove {
+                                                from: piece.position,
+                                                to,
+                                                move_type: MoveType::NormalAndRescue(dir),
+                                                piece_type: piece.piece_type,
+                                            });
+                                        }
                                     }
                                 }
                             }

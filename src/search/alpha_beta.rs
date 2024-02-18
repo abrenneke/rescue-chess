@@ -1,4 +1,4 @@
-use std::time::Instant;
+use rand::seq::SliceRandom;
 
 use crate::{evaluation::evaluate_position, PieceMove, Position};
 
@@ -52,6 +52,25 @@ pub fn search(position: &Position, depth: u32, state: &mut SearchState) -> Searc
     }
 }
 
+struct SearchIteration<'a: 'b, 'b> {
+    alpha: i32,
+    beta: i32,
+    depth: u32,
+    state: &'b mut SearchState<'a>,
+    principal_variations: Vec<Vec<PieceMove>>,
+}
+
+impl<'a, 'b> std::fmt::Debug for SearchIteration<'a, 'b> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SearchIteration")
+            .field("alpha", &self.alpha)
+            .field("beta", &self.beta)
+            .field("depth", &self.depth)
+            .field("principal_variations", &self.principal_variations)
+            .finish()
+    }
+}
+
 pub fn alpha_beta(
     position: &Position,
     alpha: i32,
@@ -98,68 +117,118 @@ pub fn alpha_beta(
 
     let moves = position.get_all_legal_moves().unwrap();
 
-    let mut alpha = alpha;
-    let mut principal_variation = vec![];
+    let mut iteration = SearchIteration {
+        alpha,
+        beta,
+        depth,
+        state,
+        principal_variations: vec![],
+    };
 
-    // Iterate through all the legal moves and search the resulting positions.
-    for mv in moves {
-        // Apply the move to a clone of the position, then
-        // switch to the other player's perspective.
-        let mut child = position.clone();
-        child.apply_move(mv).unwrap();
-        child.invert();
+    let mut pass1 = vec![];
+    let mut pass2 = vec![];
 
-        // Depth-first search the child position.
-        let result = alpha_beta(&child, -beta, -alpha, depth - 1, state);
-
-        match result {
-            Err(e) => {
-                return Err(e);
-            }
-            Ok(result) => {
-                // Negate the score to switch back to the original player's perspective.
-                let score = -result.score;
-
-                // If the score is greater than or equal to beta, we can prune the search.
-                if score >= beta {
-                    state.pruned += 1;
-
-                    return Ok(SearchResult {
-                        principal_variation: vec![mv],
-                        score,
-                    });
-                }
-
-                // If the score is greater than alpha, we have found a new best move.
-                if score >= alpha {
-                    alpha = score;
-
-                    principal_variation = result.principal_variation.clone();
-                    principal_variation.insert(0, mv);
-                }
-            }
+    for mv in moves.into_iter() {
+        if mv.is_capture() {
+            pass1.push(mv);
+        } else {
+            pass2.push(mv);
         }
     }
 
-    state.transposition_table.insert(
+    // Iterate through all the legal moves and search the resulting positions.
+    for mv in pass1 {
+        if let Some(result) = test_move(mv, position, &mut iteration) {
+            return result;
+        }
+    }
+
+    for mv in pass2 {
+        if let Some(result) = test_move(mv, position, &mut iteration) {
+            return result;
+        }
+    }
+
+    let picked_variation = iteration
+        .principal_variations
+        .choose(&mut iteration.state.rng)
+        .expect("No principal variations found");
+
+    iteration.state.transposition_table.insert(
         position.clone(),
         TranspositionTableEntry {
             depth,
-            score: alpha,
-            principal_variation: principal_variation.clone(),
+            score: iteration.alpha,
+            principal_variation: picked_variation.clone(),
         },
     );
 
     return Ok(SearchResult {
-        principal_variation,
-        score: alpha,
+        principal_variation: picked_variation.clone(),
+        score: iteration.alpha,
     });
+}
+
+fn test_move(
+    mv: PieceMove,
+    position: &Position,
+    iteration: &mut SearchIteration,
+) -> Option<Result<SearchResult, Error>> {
+    // Apply the move to a clone of the position, then
+    // switch to the other player's perspective.
+    let mut child = position.clone();
+    child.apply_move(mv).unwrap();
+    child.invert();
+
+    // Depth-first search the child position.
+    let result = alpha_beta(
+        &child,
+        -iteration.beta,
+        -iteration.alpha,
+        iteration.depth - 1,
+        iteration.state,
+    );
+
+    match result {
+        Err(e) => Some(Err(e)),
+        Ok(result) => {
+            // Negate the score to switch back to the original player's perspective.
+            let score = -result.score;
+
+            // If the score is greater than or equal to beta, we can prune the search.
+            if score >= iteration.beta {
+                iteration.state.pruned += 1;
+
+                return Some(Ok(SearchResult {
+                    principal_variation: vec![mv],
+                    score,
+                }));
+            }
+
+            // If the score is greater than alpha, we have found a new best move.
+            if score > iteration.alpha {
+                iteration.alpha = score;
+
+                let mut principal_variation = result.principal_variation.clone();
+                principal_variation.insert(0, mv);
+
+                iteration.principal_variations = vec![principal_variation];
+            } else if score == iteration.alpha {
+                let mut principal_variation = result.principal_variation.clone();
+                principal_variation.insert(0, mv);
+
+                iteration.principal_variations.push(principal_variation);
+            } else if iteration.principal_variations.is_empty() {
+                iteration.principal_variations.push(vec![mv]);
+            }
+
+            None
+        }
+    }
 }
 
 #[cfg(test)]
 pub mod tests {
-    use std::time::Instant;
-
     use crate::{
         search::{
             alpha_beta::search, search_results::SearchState,
@@ -173,14 +242,22 @@ pub mod tests {
         let position: Position = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR".into();
 
         let mut transposition_table = TranspositionTable::new();
-        let mut state = SearchState {
-            nodes_searched: 0,
-            cached_positions: 0,
-            pruned: 0,
-            transposition_table: &mut transposition_table,
-            start_time: Instant::now(),
-            time_limit: 1000,
-        };
+        let mut state = SearchState::new(&mut transposition_table);
+
+        let result = search(&position, 4, &mut state);
+
+        println!("{}", result.best_move);
+    }
+
+    #[test]
+    pub fn dumb_check() {
+        let mut position: Position = "8/8/8/Rqpbkp2/8/8/8/K".into();
+        position.invert();
+
+        println!("{}", position.to_board_string());
+
+        let mut transposition_table = TranspositionTable::new();
+        let mut state = SearchState::new(&mut transposition_table);
 
         let result = search(&position, 4, &mut state);
 

@@ -112,6 +112,17 @@ impl PieceMove {
         inverted.invert();
         inverted
     }
+
+    pub fn is_capture(&self) -> bool {
+        match self.move_type {
+            MoveType::Capture(_) => true,
+            MoveType::CaptureAndRescue { .. } => true,
+            MoveType::CaptureAndDrop { .. } => true,
+            MoveType::EnPassant(_) => true,
+            MoveType::CapturePromotion { .. } => true,
+            _ => false,
+        }
+    }
 }
 
 /// Displays the move in algebraic notation.

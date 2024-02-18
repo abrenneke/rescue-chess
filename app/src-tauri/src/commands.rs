@@ -1,8 +1,18 @@
 use serde::Serialize;
-use std::thread;
+use std::{
+    borrow::BorrowMut,
+    sync::{Arc, Mutex},
+    thread,
+};
 
 use rescue_chess::{
-    search::{alpha_beta, negamax_hashing, search_results::SearchResults},
+    search::{
+        alpha_beta,
+        iterative_deepening::IterativeDeepeningData,
+        negamax_hashing,
+        search_results::{SearchResults, SearchState},
+        transposition_table::{self, TranspositionTable},
+    },
     Color, PieceMove,
 };
 use tauri::{command, Manager, State};
@@ -99,13 +109,24 @@ struct BlackMoveResponse {
     move_from_whites_perspective: PieceMove,
 }
 
+#[derive(Clone, Serialize)]
+struct WhiteMoveResponse {
+    results: SearchResults,
+    mv: PieceMove,
+}
+
 #[command]
 pub fn get_black_move(state: State<GlobalState>, app: tauri::AppHandle) -> Result<(), String> {
     let gs = state.lock().unwrap();
+    let transposition_table = gs.transposition_table.clone();
+
     let from_black = gs.position.inverted();
 
     thread::spawn(move || -> () {
-        let results = alpha_beta::search(&from_black, 4);
+        let mut transposition_table = transposition_table.lock().unwrap();
+        let mut state = SearchState::new(transposition_table.borrow_mut());
+
+        let results = alpha_beta::search(&from_black, 4, &mut state);
         let move_from_whites_perspective = results.best_move.inverted();
 
         app.emit(
@@ -120,3 +141,18 @@ pub fn get_black_move(state: State<GlobalState>, app: tauri::AppHandle) -> Resul
 
     Ok(())
 }
+
+// pub fn get_white_move(state: State<GlobalState>) -> Result<PieceMove, String> {
+//     let gs = state.lock().unwrap();
+//     let from_black = gs.position.inverted();
+
+//     thread::spawn(move || -> () {
+//         let results = alpha_beta::search(&from_black, 4);
+//         let move_from_whites_perspective = results.best_move.inverted();
+
+//         app.emit("white_move", WhiteMoveResponse { results, mv })
+//             .unwrap();
+//     });
+
+//     Ok(())
+// }

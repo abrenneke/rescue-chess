@@ -184,25 +184,25 @@ impl Pos {
         (self.0 % 8, self.0 / 8)
     }
 
-    pub fn get_cardinal_adjacent(&self) -> Vec<Pos> {
-        let mut adjacent = Vec::with_capacity(4);
+    pub fn get_cardinal_adjacent(&self) -> [Option<Pos>; 4] {
+        let mut adjacent: [Option<Pos>; 4] = [None; 4];
 
         let (x, y) = self.as_tuple();
 
         if x > 0 {
-            adjacent.push(Pos::xy(x - 1, y));
+            adjacent[0] = Some(Pos::xy(x - 1, y));
         }
 
         if x < 7 {
-            adjacent.push(Pos::xy(x + 1, y));
+            adjacent[1] = Some(Pos::xy(x + 1, y));
         }
 
         if y > 0 {
-            adjacent.push(Pos::xy(x, y - 1));
+            adjacent[2] = Some(Pos::xy(x, y - 1));
         }
 
         if y < 7 {
-            adjacent.push(Pos::xy(x, y + 1));
+            adjacent[3] = Some(Pos::xy(x, y + 1));
         }
 
         adjacent

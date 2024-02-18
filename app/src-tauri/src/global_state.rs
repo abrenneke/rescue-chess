@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use rescue_chess::Position;
+use rescue_chess::{search::transposition_table::TranspositionTable, Position};
 
 pub struct GlobalState(pub Arc<Mutex<GlobalStateData>>);
 
@@ -23,12 +23,14 @@ impl Deref for GlobalState {
 
 pub struct GlobalStateData {
     pub position: Position,
+    pub transposition_table: Arc<Mutex<TranspositionTable>>,
 }
 
 impl Default for GlobalStateData {
     fn default() -> Self {
         GlobalStateData {
             position: Position::start_position(),
+            transposition_table: Arc::new(Mutex::new(TranspositionTable::new())),
         }
     }
 }

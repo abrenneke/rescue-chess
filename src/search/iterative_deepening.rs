@@ -63,14 +63,9 @@ impl IterativeDeepeningData {
         start_time: Instant,
         time_limit: u128,
     ) -> SearchResults {
-        let mut state = SearchState {
-            nodes_searched: 0,
-            cached_positions: 0,
-            pruned: 0,
-            transposition_table: &mut self.transposition_table,
-            start_time,
-            time_limit,
-        };
+        let mut state = SearchState::new(&mut self.transposition_table);
+        state.start_time = start_time;
+        state.time_limit = time_limit;
 
         alpha_beta::search(&self.current_position, depth, &mut state)
     }
