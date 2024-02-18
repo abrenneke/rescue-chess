@@ -1,6 +1,6 @@
 use fxhash::FxHashMap;
 
-use crate::{PieceMove, Position};
+use crate::{variation::Variation, Position};
 
 /// A transposition table that stores positions and their scores and depths.
 ///
@@ -14,7 +14,7 @@ pub struct TranspositionTable {
 pub struct TranspositionTableEntry {
     pub score: i32,
     pub depth: u32,
-    pub principal_variation: Vec<PieceMove>,
+    pub principal_variation: Variation,
 }
 
 impl TranspositionTable {

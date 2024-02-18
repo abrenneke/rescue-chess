@@ -4,7 +4,7 @@ use crate::{
     bitboard::Bitboard,
     piece::{Color, PieceType},
     piece_move::{MoveType, PieceMove},
-    pos::Pos,
+    pos::{self, Pos},
 };
 
 use super::piece::Piece;
@@ -288,7 +288,7 @@ impl Position {
 
         for mv in possible_moves.into_iter() {
             let mut new_position = self.clone();
-            new_position.apply_move(mv)?;
+            new_position.apply_move(&mv)?;
 
             if !new_position.is_king_in_check()? {
                 moves.push(mv);
@@ -465,7 +465,7 @@ impl Position {
         board_string
     }
 
-    pub fn apply_move(&mut self, mv: PieceMove) -> Result<(), anyhow::Error> {
+    pub fn apply_move(&mut self, mv: &PieceMove) -> Result<(), anyhow::Error> {
         let piece = self
             .get_piece_at(mv.from)
             .ok_or(anyhow::anyhow!("No piece at position"))?;
@@ -643,9 +643,42 @@ impl std::convert::From<&'static str> for Position {
     }
 }
 
+pub fn print_positions(positions: &[Position]) -> String {
+    const COLUMNS: usize = 10;
+
+    let mut output = String::new();
+
+    let board_strings = positions
+        .iter()
+        .map(|p| p.to_board_string())
+        .collect::<Vec<_>>();
+
+    let chunked = board_strings.chunks(COLUMNS);
+
+    for chunk in chunked {
+        let chunk_split_into_lines = chunk
+            .iter()
+            .map(|s| s.lines().collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+
+        for line in 0..8 {
+            for position in chunk_split_into_lines.iter() {
+                let line = position[line];
+                output.push_str(line);
+                output.push_str("   ");
+            }
+            output.push('\n');
+        }
+
+        output.push('\n');
+    }
+
+    output
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{piece_move::MoveType, PieceMove, PieceType, Position};
+    use crate::{piece_move::MoveType, position::print_positions, PieceMove, PieceType, Position};
 
     #[test]
     pub fn parse_fen_1() {
@@ -744,8 +777,27 @@ mod tests {
             piece_type: PieceType::Pawn,
         };
 
-        position.apply_move(mv).unwrap();
+        position.apply_move(&mv).unwrap();
 
         println!("{}", position.to_board_string());
+    }
+
+    #[test]
+    fn print_positions_test() {
+        let positions = vec![
+            "8/1p1n4/1r6/2r1P1R1/P4k2/p4p2/p2N1pP1/2n4K w - - 0 1".into(),
+            "1K6/4R1p1/2p1r1k1/b1Rp4/5P1n/1b6/4B2p/1n1r4 w - - 0 1".into(),
+            "1rk5/B7/4p3/P2p3p/5ppQ/Pp1n3b/3P4/6K1 w - - 0 1".into(),
+            "5n2/R7/1rpP1P2/5N1P/p3P2p/2N2K2/p4P2/4k3 w - - 0 1".into(),
+            "1n5k/n6r/4b3/6PQ/3P4/1B1N1PK1/2P2Pp1/5r2 w - - 0 1".into(),
+            "6r1/6p1/kn1N3p/2P5/5p1b/2P5/1Q2P2r/Bb3K2 w - - 0 1".into(),
+            "3R4/1P5P/1bp3Bq/6p1/p2P4/8/rr2Nk1p/3K4 w - - 0 1".into(),
+            "N2K4/6k1/1P2p1q1/5RP1/4B2P/4r1P1/1NR4p/2B5 w - - 0 1".into(),
+            "K6b/2P5/1pB1p3/2Pn2P1/7r/kP1p4/p2NP3/8 w - - 0 1".into(),
+            "8/8/1k1r2P1/4pp1n/2P1pB2/1pK2P2/b3r1p1/7n w - - 0 1".into(),
+            "1b6/4r3/1PP2B1p/3Pp1N1/1P6/3N4/RQ4p1/K2k4 w - - 0 1".into(),
+        ];
+
+        println!("{}", print_positions(&positions));
     }
 }

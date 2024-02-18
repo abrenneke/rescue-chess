@@ -48,7 +48,7 @@ pub fn negamax_hashing(
         // Apply the move to a clone of the position
         // then switch to other player's perspective
         let mut child = position.clone();
-        child.apply_move(mv).unwrap();
+        child.apply_move(&mv).unwrap();
         child.invert();
 
         if let MoveType::Capture(captured) = mv.move_type {

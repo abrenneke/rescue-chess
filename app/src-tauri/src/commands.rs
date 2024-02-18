@@ -73,7 +73,7 @@ pub fn move_piece(mv: PieceMove, state: State<GlobalState>) -> Result<(), String
                     .ok_or_else(|| "Invalid move".to_string())?;
 
                 gs.position
-                    .apply_move(matching_move)
+                    .apply_move(&matching_move)
                     .map_err(|e| e.to_string())?;
             }
             Color::Black => {
@@ -91,7 +91,7 @@ pub fn move_piece(mv: PieceMove, state: State<GlobalState>) -> Result<(), String
                     .ok_or_else(|| "Invalid move".to_string())?;
 
                 inverted_position
-                    .apply_move(matching_move)
+                    .apply_move(&matching_move)
                     .map_err(|e| e.to_string())?;
 
                 gs.position = inverted_position.inverted();

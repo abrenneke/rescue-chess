@@ -1,6 +1,11 @@
 use rand::seq::SliceRandom;
+use tracing::{debug, info, trace};
 
-use crate::{evaluation::evaluate_position, PieceMove, Position};
+use crate::{
+    evaluation::evaluate_position,
+    variation::{Variation, Variations},
+    Color, PieceMove, Position,
+};
 
 use super::{
     search_results::{SearchResults, SearchState},
@@ -9,7 +14,7 @@ use super::{
 
 #[derive(Clone)]
 pub struct SearchResult {
-    pub principal_variation: Vec<PieceMove>,
+    pub principal_variation: Variation,
     pub score: i32,
 }
 
@@ -29,13 +34,22 @@ pub enum Error {
 }
 
 pub fn search(position: &Position, depth: u32, state: &mut SearchState) -> SearchResults {
-    let result = alpha_beta(position, -1000, 1000, depth, state);
+    let mut move_stack = vec![];
+    let result = alpha_beta(
+        position,
+        -1000,
+        1000,
+        depth,
+        Color::White,
+        state,
+        &mut move_stack,
+    );
 
     let time_taken_ms = state.start_time.elapsed().as_millis();
 
     match result {
-        Ok(result) => {
-            let best_move = result.principal_variation.first().cloned().unwrap();
+        AlphaBetaResult::SearchResult(result) => {
+            let best_move = result.principal_variation.next_move();
 
             SearchResults {
                 best_move,
@@ -48,7 +62,7 @@ pub fn search(position: &Position, depth: u32, state: &mut SearchState) -> Searc
                 pruned: state.pruned,
             }
         }
-        Err(_) => panic!("Search timed out"),
+        AlphaBetaResult::Error(_) => panic!("Search timed out"),
     }
 }
 
@@ -57,7 +71,7 @@ struct SearchIteration<'a: 'b, 'b> {
     beta: i32,
     depth: u32,
     state: &'b mut SearchState<'a>,
-    principal_variations: Vec<Vec<PieceMove>>,
+    principal_variations: Variations,
 }
 
 impl<'a, 'b> std::fmt::Debug for SearchIteration<'a, 'b> {
@@ -71,18 +85,28 @@ impl<'a, 'b> std::fmt::Debug for SearchIteration<'a, 'b> {
     }
 }
 
+pub enum AlphaBetaResult {
+    /// There was an error during the search.
+    Error(Error),
+
+    /// The score and selected principal variation of the alpha-beta search.
+    SearchResult(SearchResult),
+}
+
 pub fn alpha_beta(
     position: &Position,
     alpha: i32,
     beta: i32,
     depth: u32,
+    color: Color,
     state: &mut SearchState,
-) -> Result<SearchResult, Error> {
+    move_stack: &mut Vec<PieceMove>,
+) -> AlphaBetaResult {
     // If we have already searched this position to the same depth or greater,
     // we can use the cached result directly.
     if let Some(entry) = state.transposition_table.try_get(position, depth) {
         state.cached_positions += 1;
-        return Ok(SearchResult {
+        return AlphaBetaResult::SearchResult(SearchResult {
             principal_variation: entry.principal_variation.clone(),
             score: entry.score,
         });
@@ -90,7 +114,7 @@ pub fn alpha_beta(
 
     // If we have exceeded the time limit, we should return an error.
     if state.start_time.elapsed().as_millis() >= state.time_limit {
-        return Err(Error::Timeout);
+        return AlphaBetaResult::Error(Error::Timeout);
     }
 
     // Increment the total number of nodes searched.
@@ -100,18 +124,9 @@ pub fn alpha_beta(
     // and return the result.
     if depth == 0 {
         let score = evaluate_position(position);
-        return Ok(SearchResult {
-            principal_variation: vec![],
+        return AlphaBetaResult::SearchResult(SearchResult {
+            principal_variation: Variation::new(),
             score,
-        });
-    }
-
-    // If the position is a checkmate, we should return a very low score.
-    // This is just to prevent the engine from continuing past a king capture.
-    if position.is_checkmate().unwrap() {
-        return Ok(SearchResult {
-            principal_variation: vec![],
-            score: -1000,
         });
     }
 
@@ -122,7 +137,7 @@ pub fn alpha_beta(
         beta,
         depth,
         state,
-        principal_variations: vec![],
+        principal_variations: Variations::new(),
     };
 
     let mut pass1 = vec![];
@@ -138,21 +153,71 @@ pub fn alpha_beta(
 
     // Iterate through all the legal moves and search the resulting positions.
     for mv in pass1 {
-        if let Some(result) = test_move(mv, position, &mut iteration) {
-            return result;
+        match test_move(mv, position, color, &mut iteration, move_stack) {
+            MoveTestResult::Error(e) => return AlphaBetaResult::Error(e),
+
+            // if score >= beta, return beta
+            MoveTestResult::Pruned => {
+                return AlphaBetaResult::SearchResult(SearchResult {
+                    principal_variation: Variation::new_from(mv),
+                    score: iteration.beta,
+                })
+            }
+            MoveTestResult::ContinueSearching => {}
+            MoveTestResult::Checkmate => {
+                return AlphaBetaResult::SearchResult(SearchResult {
+                    principal_variation: Variation::new_from(mv),
+                    score: 1000,
+                });
+            }
         }
     }
 
     for mv in pass2 {
-        if let Some(result) = test_move(mv, position, &mut iteration) {
-            return result;
+        match test_move(mv, position, color, &mut iteration, move_stack) {
+            MoveTestResult::Error(e) => return AlphaBetaResult::Error(e),
+
+            // if score >= beta, return beta
+            MoveTestResult::Pruned => {
+                return AlphaBetaResult::SearchResult(SearchResult {
+                    principal_variation: Variation::new_from(mv),
+                    score: iteration.beta,
+                })
+            }
+            MoveTestResult::ContinueSearching => {}
+            MoveTestResult::Checkmate => {
+                return AlphaBetaResult::SearchResult(SearchResult {
+                    principal_variation: Variation::new_from(mv),
+                    score: 1000,
+                });
+            }
         }
+    }
+
+    trace!(
+        "({}) Tested all moves for this board and no cutoff at depth {}. Alpha: {}, Beta: {}",
+        color,
+        depth,
+        iteration.alpha,
+        iteration.beta
+    );
+    trace!("\n{}", position.to_board_string());
+
+    // If we have no PV, that means all moves were pruned.
+    if iteration.principal_variations.variations.is_empty() {
+        return AlphaBetaResult::SearchResult(SearchResult {
+            principal_variation: Variation::new(),
+            score: iteration.alpha,
+        });
     }
 
     let picked_variation = iteration
         .principal_variations
+        .variations
         .choose(&mut iteration.state.rng)
         .expect("No principal variations found");
+
+    trace!("Picked principal variation: {}", picked_variation);
 
     iteration.state.transposition_table.insert(
         position.clone(),
@@ -163,22 +228,53 @@ pub fn alpha_beta(
         },
     );
 
-    return Ok(SearchResult {
+    return AlphaBetaResult::SearchResult(SearchResult {
         principal_variation: picked_variation.clone(),
         score: iteration.alpha,
     });
 }
 
+enum MoveTestResult {
+    Error(Error),
+    Pruned,
+    ContinueSearching,
+    Checkmate,
+}
+
 fn test_move(
     mv: PieceMove,
     position: &Position,
+    color: Color,
     iteration: &mut SearchIteration,
-) -> Option<Result<SearchResult, Error>> {
+    move_stack: &mut Vec<PieceMove>,
+) -> MoveTestResult {
+    move_stack.push(mv);
+
+    trace!(
+        "({}) Testing move: {:?} at {} depth remaining",
+        color,
+        move_stack,
+        iteration.depth
+    );
+
     // Apply the move to a clone of the position, then
     // switch to the other player's perspective.
     let mut child = position.clone();
-    child.apply_move(mv).unwrap();
+    child.apply_move(&mv).unwrap();
     child.invert();
+
+    if child.is_checkmate().unwrap() {
+        trace!(
+            "({}) Checkmate found at depth remaining {}",
+            color,
+            iteration.depth
+        );
+
+        println!("{}", child.to_board_string());
+
+        move_stack.pop();
+        return MoveTestResult::Checkmate;
+    }
 
     // Depth-first search the child position.
     let result = alpha_beta(
@@ -186,43 +282,79 @@ fn test_move(
         -iteration.beta,
         -iteration.alpha,
         iteration.depth - 1,
+        match color {
+            Color::White => Color::Black,
+            Color::Black => Color::White,
+        },
         iteration.state,
+        move_stack,
     );
 
     match result {
-        Err(e) => Some(Err(e)),
-        Ok(result) => {
+        AlphaBetaResult::Error(e) => MoveTestResult::Error(e),
+        AlphaBetaResult::SearchResult(result) => {
             // Negate the score to switch back to the original player's perspective.
             let score = -result.score;
+
+            trace!(
+                "({}) Move {:?} at {} depth remaining scored {}",
+                color,
+                move_stack,
+                iteration.depth,
+                score
+            );
 
             // If the score is greater than or equal to beta, we can prune the search.
             if score >= iteration.beta {
                 iteration.state.pruned += 1;
 
-                return Some(Ok(SearchResult {
-                    principal_variation: vec![mv],
+                trace!(
+                    "({}) Pruning move: {:?} with {} depth remaining: {} >= {}",
+                    color,
+                    move_stack,
+                    iteration.depth,
                     score,
-                }));
+                    iteration.beta
+                );
+
+                move_stack.pop();
+                return MoveTestResult::Pruned;
             }
+
+            let mut principal_variation = result.principal_variation;
 
             // If the score is greater than alpha, we have found a new best move.
             if score > iteration.alpha {
                 iteration.alpha = score;
+                principal_variation.prepend_move(mv);
 
-                let mut principal_variation = result.principal_variation.clone();
-                principal_variation.insert(0, mv);
-
-                iteration.principal_variations = vec![principal_variation];
+                trace!(
+                    "({}) Found new best move {:?} with {} depth remaining: {} ({})",
+                    color,
+                    move_stack,
+                    iteration.depth,
+                    &principal_variation,
+                    score
+                );
+                iteration.principal_variations = Variations::new_from(principal_variation);
             } else if score == iteration.alpha {
-                let mut principal_variation = result.principal_variation.clone();
-                principal_variation.insert(0, mv);
+                principal_variation.prepend_move(mv);
+                trace!(
+                    "({}) Found alternate best move {:?} with {} depth remaining: {} ({})",
+                    color,
+                    move_stack,
+                    iteration.depth,
+                    &principal_variation,
+                    score
+                );
 
                 iteration.principal_variations.push(principal_variation);
-            } else if iteration.principal_variations.is_empty() {
-                iteration.principal_variations.push(vec![mv]);
+            } else if iteration.principal_variations.variations.is_empty() {
+                iteration.principal_variations.push(Variation::new_from(mv));
             }
 
-            None
+            move_stack.pop();
+            MoveTestResult::ContinueSearching
         }
     }
 }
@@ -237,6 +369,9 @@ pub mod tests {
         Position,
     };
 
+    use tracing::Level;
+    use tracing_subscriber::FmtSubscriber;
+
     #[test]
     pub fn alpha_beta() {
         let position: Position = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR".into();
@@ -247,10 +382,22 @@ pub mod tests {
         let result = search(&position, 4, &mut state);
 
         println!("{}", result.best_move);
+
+        println!(
+            "{}",
+            result.principal_variation.print_as_positions(&position)
+        )
     }
 
     #[test]
     pub fn dumb_check() {
+        let subscriber = FmtSubscriber::builder()
+            .with_max_level(Level::TRACE)
+            .without_time()
+            .finish();
+
+        tracing::subscriber::set_global_default(subscriber).unwrap();
+
         let mut position: Position = "8/8/8/Rqpbkp2/8/8/8/K".into();
         position.invert();
 
@@ -259,8 +406,13 @@ pub mod tests {
         let mut transposition_table = TranspositionTable::new();
         let mut state = SearchState::new(&mut transposition_table);
 
-        let result = search(&position, 4, &mut state);
+        let result = search(&position, 6, &mut state);
 
         println!("{}", result.best_move);
+
+        println!(
+            "{}",
+            result.principal_variation.print_as_positions(&position)
+        )
     }
 }

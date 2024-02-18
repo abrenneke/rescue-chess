@@ -56,6 +56,15 @@ pub enum Color {
     Black,
 }
 
+impl std::fmt::Display for Color {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Color::White => write!(f, "White"),
+            Color::Black => write!(f, "Black"),
+        }
+    }
+}
+
 #[derive(PartialEq, Copy, Clone, Hash, Eq, Serialize)]
 pub struct Piece {
     pub piece_type: PieceType,

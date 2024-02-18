@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use serde::Serialize;
 
-use crate::PieceMove;
+use crate::{variation::Variation, PieceMove};
 
 use super::transposition_table::TranspositionTable;
 
@@ -15,7 +15,7 @@ pub struct SearchResults {
     pub depth: u32,
     pub time_taken_ms: u128,
     pub pruned: u32,
-    pub principal_variation: Vec<PieceMove>,
+    pub principal_variation: Variation,
 }
 
 pub struct SearchState<'a> {

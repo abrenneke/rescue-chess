@@ -6,6 +6,7 @@ pub mod piece_move;
 pub mod pos;
 pub mod position;
 pub mod search;
+pub mod variation;
 
 pub use bitboard::Bitboard;
 pub use piece::{Color, Piece, PieceType};
