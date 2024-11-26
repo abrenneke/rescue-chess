@@ -8,7 +8,7 @@ use super::transposition_table::TranspositionTable;
 
 #[derive(Clone, Serialize)]
 pub struct SearchResults {
-    pub best_move: PieceMove,
+    pub best_move: Option<PieceMove>,
     pub score: i32,
     pub nodes_searched: u32,
     pub cached_positions: u32,
@@ -18,10 +18,10 @@ pub struct SearchResults {
     pub principal_variation: Vec<PieceMove>,
 }
 
-pub struct SearchState<'a> {
+pub struct SearchState<'table> {
     pub nodes_searched: u32,
     pub cached_positions: u32,
-    pub transposition_table: &'a mut TranspositionTable,
+    pub transposition_table: &'table mut TranspositionTable,
     pub rng: rand::rngs::ThreadRng,
     pub start_time: Instant,
     pub time_limit: u128,

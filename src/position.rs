@@ -1,9 +1,11 @@
+mod fen;
+
 use std::hash::Hash;
 
 use crate::{
     bitboard::Bitboard,
     piece::{Color, PieceType},
-    piece_move::{MoveType, PieceMove},
+    piece_move::{GameType, MoveType, PieceMove},
     pos::Pos,
 };
 
@@ -12,7 +14,7 @@ use super::piece::Piece;
 /// Records the castling rights that each player has at a point in the game. Once
 /// a player moves their king, or the rook that is involved in castling, the
 /// castling rights are removed.
-#[derive(Clone, PartialEq, Copy, Hash, Eq)]
+#[derive(Debug, Clone, PartialEq, Copy, Hash, Eq)]
 pub struct CastlingRights {
     /// Can white castle kingside
     pub white_king_side: bool,
@@ -29,7 +31,7 @@ pub struct CastlingRights {
 
 /// A game position in chess. Contains all state to represent a single position
 /// in a game of chess.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub struct Position {
     /// The pieces on the board
     pub pieces: arrayvec::ArrayVec<Piece, 32>,
@@ -247,12 +249,12 @@ impl Position {
     }
 
     /// Returns true if white is in checkmate. Returns an error if the position is invalid (no king)
-    pub fn is_checkmate(&self) -> Result<bool, anyhow::Error> {
-        Ok(self.is_king_in_check()? && self.get_all_legal_moves()?.is_empty())
+    pub fn is_checkmate(&self, game_type: GameType) -> Result<bool, anyhow::Error> {
+        Ok(self.is_king_in_check(game_type)? && self.get_all_legal_moves(game_type)?.is_empty())
     }
 
     /// Returns true if the white king is currently in check. Returns an error if there is no king.
-    pub fn is_king_in_check(&self) -> Result<bool, anyhow::Error> {
+    pub fn is_king_in_check(&self, game_type: GameType) -> Result<bool, anyhow::Error> {
         // TODO probably more efficient to check from the king position
         let king = self
             .pieces
@@ -263,7 +265,7 @@ impl Position {
             Some(king) => {
                 let king_position = king.position;
 
-                let black_moves = self.inverted().get_all_moves_unchecked();
+                let black_moves = self.inverted().get_all_moves_unchecked(game_type);
 
                 for mv in black_moves {
                     if mv.to.invert() == king_position {
@@ -282,15 +284,18 @@ impl Position {
 
     /// Gets all legal moves for the current position. Takes into account
     /// whether the king is in check, etc.
-    pub fn get_all_legal_moves(&self) -> Result<Vec<PieceMove>, anyhow::Error> {
-        let possible_moves = self.get_all_moves_unchecked();
+    pub fn get_all_legal_moves(
+        &self,
+        game_type: GameType,
+    ) -> Result<Vec<PieceMove>, anyhow::Error> {
+        let possible_moves = self.get_all_moves_unchecked(game_type);
         let mut moves = Vec::with_capacity(possible_moves.len());
 
         for mv in possible_moves.into_iter() {
             let mut new_position = self.clone();
             new_position.apply_move(mv)?;
 
-            if !new_position.is_king_in_check()? {
+            if !new_position.is_king_in_check(game_type)? {
                 moves.push(mv);
             }
         }
@@ -300,37 +305,39 @@ impl Position {
 
     /// Gets all moves that are possible by white, without checking for
     /// check, use this to check whether a king is in check, etc.
-    pub fn get_all_moves_unchecked(&self) -> Vec<PieceMove> {
+    pub fn get_all_moves_unchecked(&self, game_type: GameType) -> Vec<PieceMove> {
         let mut moves = Vec::with_capacity(self.pieces.len() * 8);
 
         for piece in self.pieces.iter().filter(|p| p.color == Color::White) {
             let legal_moves = piece.get_legal_moves(self.white_map, self.black_map);
 
             // Don't move, must rescue or drop
-            for dir in piece.position.get_cardinal_adjacent().into_iter() {
-                if let Some(dir) = dir {
-                    match piece.holding {
-                        Some(_) => {
-                            if let None = self.get_piece_at(dir) {
-                                moves.push(PieceMove {
-                                    from: piece.position,
-                                    to: piece.position,
-                                    move_type: MoveType::NormalAndDrop(dir),
-                                    piece_type: piece.piece_type,
-                                });
-                            }
-                        }
-                        None => {
-                            if let Some(piece_at_pos) = self.get_piece_at(dir) {
-                                if piece_at_pos.color == Color::White
-                                    && piece.piece_type.can_hold(piece_at_pos.piece_type)
-                                {
+            if game_type == GameType::Rescue {
+                for dir in piece.position.get_cardinal_adjacent().into_iter() {
+                    if let Some(dir) = dir {
+                        match piece.holding {
+                            Some(_) => {
+                                if let None = self.get_piece_at(dir) {
                                     moves.push(PieceMove {
                                         from: piece.position,
                                         to: piece.position,
-                                        move_type: MoveType::NormalAndRescue(dir),
+                                        move_type: MoveType::NormalAndDrop(dir),
                                         piece_type: piece.piece_type,
                                     });
+                                }
+                            }
+                            None => {
+                                if let Some(piece_at_pos) = self.get_piece_at(dir) {
+                                    if piece_at_pos.color == Color::White
+                                        && piece.piece_type.can_hold(piece_at_pos.piece_type)
+                                    {
+                                        moves.push(PieceMove {
+                                            from: piece.position,
+                                            to: piece.position,
+                                            move_type: MoveType::NormalAndRescue(dir),
+                                            piece_type: piece.piece_type,
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -360,59 +367,23 @@ impl Position {
                     });
                 }
 
-                match piece.holding {
-                    // Drop a rescued piece at an adjacent position
-                    Some(_) => {
-                        for dir in to.get_cardinal_adjacent().into_iter() {
-                            if let Some(dir) = dir {
-                                if let None = self.get_piece_at(dir) {
-                                    if self.black_map.get(to) {
-                                        moves.push(PieceMove {
-                                            from: piece.position,
-                                            to,
-                                            move_type: MoveType::CaptureAndDrop {
-                                                captured_type: self
-                                                    .get_piece_at(to)
-                                                    .unwrap()
-                                                    .piece_type,
-                                                drop_pos: dir,
-                                            },
-                                            piece_type: piece.piece_type,
-                                        });
-                                    } else {
-                                        moves.push(PieceMove {
-                                            from: piece.position,
-                                            to,
-                                            move_type: MoveType::NormalAndDrop(dir),
-                                            piece_type: piece.piece_type,
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    // Rescue adjacent pieces of the same color
-                    None => {
-                        for dir in to.get_cardinal_adjacent().into_iter() {
-                            if let Some(dir) = dir {
-                                if let Some(piece_at_pos) = self.get_piece_at(dir) {
-                                    if piece_at_pos == piece {
-                                        continue;
-                                    }
-
-                                    if piece_at_pos.color == Color::White
-                                        && piece.piece_type.can_hold(piece_at_pos.piece_type)
-                                    {
+                if game_type == GameType::Rescue {
+                    match piece.holding {
+                        // Drop a rescued piece at an adjacent position
+                        Some(_) => {
+                            for dir in to.get_cardinal_adjacent().into_iter() {
+                                if let Some(dir) = dir {
+                                    if let None = self.get_piece_at(dir) {
                                         if self.black_map.get(to) {
                                             moves.push(PieceMove {
                                                 from: piece.position,
                                                 to,
-                                                move_type: MoveType::CaptureAndRescue {
+                                                move_type: MoveType::CaptureAndDrop {
                                                     captured_type: self
                                                         .get_piece_at(to)
                                                         .unwrap()
                                                         .piece_type,
-                                                    rescued_pos: dir,
+                                                    drop_pos: dir,
                                                 },
                                                 piece_type: piece.piece_type,
                                             });
@@ -420,9 +391,47 @@ impl Position {
                                             moves.push(PieceMove {
                                                 from: piece.position,
                                                 to,
-                                                move_type: MoveType::NormalAndRescue(dir),
+                                                move_type: MoveType::NormalAndDrop(dir),
                                                 piece_type: piece.piece_type,
                                             });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // Rescue adjacent pieces of the same color
+                        None => {
+                            for dir in to.get_cardinal_adjacent().into_iter() {
+                                if let Some(dir) = dir {
+                                    if let Some(piece_at_pos) = self.get_piece_at(dir) {
+                                        if piece_at_pos == piece {
+                                            continue;
+                                        }
+
+                                        if piece_at_pos.color == Color::White
+                                            && piece.piece_type.can_hold(piece_at_pos.piece_type)
+                                        {
+                                            if self.black_map.get(to) {
+                                                moves.push(PieceMove {
+                                                    from: piece.position,
+                                                    to,
+                                                    move_type: MoveType::CaptureAndRescue {
+                                                        captured_type: self
+                                                            .get_piece_at(to)
+                                                            .unwrap()
+                                                            .piece_type,
+                                                        rescued_pos: dir,
+                                                    },
+                                                    piece_type: piece.piece_type,
+                                                });
+                                            } else {
+                                                moves.push(PieceMove {
+                                                    from: piece.position,
+                                                    to,
+                                                    move_type: MoveType::NormalAndRescue(dir),
+                                                    piece_type: piece.piece_type,
+                                                });
+                                            }
                                         }
                                     }
                                 }
@@ -461,6 +470,40 @@ impl Position {
 
             board_string.push('\n');
         }
+
+        board_string
+    }
+
+    pub fn to_board_string_with_rank_file(&self) -> String {
+        let mut board = [[None; 8]; 8];
+
+        for piece in self.pieces.iter() {
+            let (x, y) = piece.position.as_tuple();
+            board[y as usize][x as usize] = Some(piece);
+        }
+
+        let mut board_string = String::new();
+
+        for rank in 0..8 {
+            board_string.push_str(&(8 - rank).to_string());
+            board_string.push(' ');
+
+            for file in 0..8 {
+                match board[rank][file] {
+                    Some(piece) => {
+                        board_string.push_str(&piece.to_string());
+                    }
+                    None => {
+                        board_string.push('.');
+                    }
+                }
+                board_string.push(' ');
+            }
+
+            board_string.push('\n');
+        }
+
+        board_string.push_str("  a b c d e f g h\n");
 
         board_string
     }
@@ -613,6 +656,52 @@ impl Position {
 
         Ok(())
     }
+
+    pub fn parse_from_fen(fen: &str) -> Result<Position, anyhow::Error> {
+        return fen::parse_position_from_fen(fen);
+    }
+
+    pub fn to_fen(&self) -> String {
+        return fen::position_to_fen(self);
+    }
+
+    /// Creates a new position by applying a sequence of moves to the starting position.
+    /// Each move should be in algebraic notation (e.g. "e4", "Nf3", etc.).
+    ///
+    /// # Example
+    /// ```rust
+    /// use rescue_chess::Position;
+    ///
+    /// let position = Position::from_moves(&["e4", "e5", "Nf3"]).unwrap();
+    /// ```
+    pub fn from_moves(moves: &[&str], game_type: GameType) -> Result<Position, anyhow::Error> {
+        let mut position = Position::start_position();
+        let mut is_black = false;
+
+        for &mv_str in moves {
+            // We need to invert the algebraic notation if we are playing as black,
+            // so use the from_algebraic_inverted method
+            let mv = if is_black {
+                PieceMove::from_algebraic_inverted(&position, mv_str, game_type)?
+            } else {
+                PieceMove::from_algebraic(&position, mv_str, game_type)?
+            };
+
+            position.apply_move(mv)?;
+
+            // Switch sides by inverting the position
+            position.invert();
+            is_black = !is_black;
+        }
+
+        Ok(position)
+    }
+}
+
+impl PartialEq for Position {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_fen() == other.to_fen()
+    }
 }
 
 impl std::hash::Hash for Position {
@@ -645,13 +734,14 @@ impl std::convert::From<&'static str> for Position {
 
 #[cfg(test)]
 mod tests {
-    use crate::{piece_move::MoveType, PieceMove, PieceType, Position};
+    use crate::{
+        piece_move::{GameType, MoveType},
+        PieceMove, PieceType, Pos, Position,
+    };
 
     #[test]
     pub fn parse_fen_1() {
         let position: Position = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1".into();
-
-        println!("{}", position.to_board_string());
 
         assert_eq!(
             position.to_fen(),
@@ -670,31 +760,31 @@ mod tests {
     #[test]
     pub fn king_not_in_check() {
         let position: Position = "8/8/8/8/8/8/8/4K3 w - - 0 1".into();
-        assert!(!position.is_king_in_check().unwrap());
+        assert!(!position.is_king_in_check(GameType::Rescue).unwrap());
 
         let position: Position = "1N3r2/4P3/2pP3p/2P2P2/3K1k2/2p1p3/3BBq2/2R5 w - - 0 1".into();
-        assert!(!position.is_king_in_check().unwrap());
+        assert!(!position.is_king_in_check(GameType::Rescue).unwrap());
 
         let position: Position = "8/nR2Q2P/P2P2kb/4B2b/4K3/1r2P2P/5p2/1r6 w - - 0 1".into();
-        assert!(!position.is_king_in_check().unwrap());
+        assert!(!position.is_king_in_check(GameType::Rescue).unwrap());
 
         let position: Position = "4B1r1/7q/rk4pP/4n3/1Np5/1p1P1R2/P1Q2K2/8 w - - 0 1".into();
-        assert!(!position.is_king_in_check().unwrap());
+        assert!(!position.is_king_in_check(GameType::Rescue).unwrap());
     }
 
     #[test]
     fn king_in_check() {
         let position: Position = "rnb1kbnr/pppppppp/3q4/8/3K4/8/PPPPPPPP/RNBQ1BNR w - - 0 1".into();
-        assert!(position.is_king_in_check().unwrap());
+        assert!(position.is_king_in_check(GameType::Rescue).unwrap());
 
         let position: Position = "rnbqk1nr/pppppppp/5b2/8/3K4/8/PPPPPPPP/RNBQ1BNR".into();
-        assert!(position.is_king_in_check().unwrap());
+        assert!(position.is_king_in_check(GameType::Rescue).unwrap());
 
         let position: Position = "rnbqkb1r/pppppppp/4n3/8/3K4/8/PPPPPPPP/RNBQ1BNR".into();
-        assert!(position.is_king_in_check().unwrap());
+        assert!(position.is_king_in_check(GameType::Rescue).unwrap());
 
         let position: Position = "rnbqkbnr/pppp1ppp/8/4p3/3K4/8/PPPPPPPP/RNBQ1BNR".into();
-        assert!(position.is_king_in_check().unwrap());
+        assert!(position.is_king_in_check(GameType::Rescue).unwrap());
     }
 
     #[test]
@@ -703,7 +793,7 @@ mod tests {
 
         println!("{}", position.to_board_string());
 
-        let moves = position.get_all_legal_moves().unwrap();
+        let moves = position.get_all_legal_moves(GameType::Rescue).unwrap();
 
         for mv in moves {
             println!("{}", mv);
@@ -714,7 +804,7 @@ mod tests {
     fn possible_moves_includes_rescue() {
         let position: Position = "8/8/8/8/8/8/8/3QK3 w - - 0 1".into();
 
-        let moves = position.get_all_moves_unchecked();
+        let moves = position.get_all_moves_unchecked(GameType::Rescue);
 
         for mv in moves {
             println!("{}", mv);
@@ -725,7 +815,7 @@ mod tests {
     fn all_possible_moves_start_position() {
         let position: Position = Position::start_position();
 
-        let moves = position.get_all_moves_unchecked();
+        let moves = position.get_all_moves_unchecked(GameType::Rescue);
 
         for mv in moves {
             println!("{}", mv);
@@ -747,5 +837,73 @@ mod tests {
         position.apply_move(mv).unwrap();
 
         println!("{}", position.to_board_string());
+    }
+
+    #[test]
+    fn test_from_moves_empty() {
+        let position = Position::from_moves(&[], GameType::Rescue).unwrap();
+        assert_eq!(position, Position::start_position());
+    }
+
+    #[test]
+    fn test_from_moves_single_move() {
+        let position = Position::from_moves(&["e4"], GameType::Rescue).unwrap();
+
+        // Verify pawn moved to e4
+        let expected =
+            Position::parse_from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1")
+                .unwrap();
+
+        assert_eq!(position, expected);
+    }
+
+    #[test]
+    fn test_from_moves_multiple_moves() {
+        let position = Position::from_moves(&["e4", "e5", "Nf3"], GameType::Rescue).unwrap();
+
+        // Verify sequence of moves
+        let expected = Position::parse_from_fen(
+            "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 1",
+        )
+        .unwrap();
+
+        assert_eq!(position, expected);
+    }
+
+    #[test]
+    fn test_from_moves_with_captures() {
+        let position =
+            Position::from_moves(&["e4", "d5", "exd5", "Qxd5"], GameType::Rescue).unwrap();
+
+        // Verify captures were handled correctly
+        let expected =
+            Position::parse_from_fen("rnb1kbnr/ppp1pppp/8/3q4/8/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1")
+                .unwrap();
+
+        assert_eq!(position, expected);
+    }
+
+    #[test]
+    fn test_from_moves_with_rescue() {
+        let position = Position::from_moves(&["e2Sf2"], GameType::Rescue).unwrap();
+
+        // Verify the rescue operation
+        assert!(position
+            .get_piece_at(Pos::from_algebraic("e2").unwrap())
+            .unwrap()
+            .holding
+            .is_some());
+
+        assert!(position
+            .get_piece_at(Pos::from_algebraic("f2").unwrap())
+            .is_none());
+    }
+
+    #[test]
+    fn test_from_moves_invalid_move() {
+        // Try to make an invalid move
+        assert!(Position::from_moves(&["e5"], GameType::Rescue).is_err()); // Pawn can't move two squares from e2
+        assert!(Position::from_moves(&["d4", "d5", "Ke2"], GameType::Rescue).is_err());
+        // King can't move through pawn
     }
 }

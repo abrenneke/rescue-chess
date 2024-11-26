@@ -2,7 +2,7 @@ use fxhash::FxHashMap;
 
 use crate::{
     evaluation::evaluate_position,
-    piece_move::{MoveType, PieceMove},
+    piece_move::{GameType, MoveType, PieceMove},
     PieceType, Position,
 };
 
@@ -30,11 +30,11 @@ pub fn negamax_hashing(
     let mut max = i32::MIN;
     let mut best_move = None;
 
-    if position.is_checkmate().unwrap() {
+    if position.is_checkmate(GameType::Rescue).unwrap() {
         return (None, -1000);
     }
 
-    let moves = position.get_all_legal_moves();
+    let moves = position.get_all_legal_moves(GameType::Rescue);
 
     let moves = match moves {
         Ok(moves) => moves,
@@ -68,19 +68,4 @@ pub fn negamax_hashing(
     hash_map.insert(position.clone(), (best_move, max));
 
     (best_move, max)
-}
-
-#[cfg(test)]
-pub mod tests {
-    use crate::Position;
-
-    use super::search;
-
-    #[test]
-    pub fn negamax_hashing_search() {
-        let position: Position = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR".into();
-        let (best_move, score) = search(&position, 3);
-
-        println!("{} ({})", best_move.unwrap(), score);
-    }
 }

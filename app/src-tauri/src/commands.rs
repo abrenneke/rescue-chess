@@ -6,8 +6,9 @@ use std::{
 };
 
 use rescue_chess::{
+    piece_move::GameType,
     search::{
-        alpha_beta,
+        alpha_beta::{self, SearchParams},
         iterative_deepening::IterativeDeepeningData,
         negamax_hashing,
         search_results::{SearchResults, SearchState},
@@ -19,6 +20,8 @@ use tauri::{command, Manager, State};
 
 use crate::global_state::GlobalState;
 
+const GAME_TYPE: GameType = GameType::Classic;
+
 #[command]
 pub fn get_valid_positions_for(
     x: u8,
@@ -29,7 +32,7 @@ pub fn get_valid_positions_for(
 
     let all_moves = gs
         .position
-        .get_all_legal_moves()
+        .get_all_legal_moves(GAME_TYPE)
         .map_err(|e| e.to_string())?;
 
     let moves_for_piece = all_moves
@@ -64,7 +67,7 @@ pub fn move_piece(mv: PieceMove, state: State<GlobalState>) -> Result<(), String
             Color::White => {
                 let all_moves = gs
                     .position
-                    .get_all_legal_moves()
+                    .get_all_legal_moves(GAME_TYPE)
                     .map_err(|e| e.to_string())?;
 
                 let matching_move = all_moves
@@ -82,7 +85,7 @@ pub fn move_piece(mv: PieceMove, state: State<GlobalState>) -> Result<(), String
                 let mv = mv.inverted();
 
                 let all_moves = inverted_position
-                    .get_all_legal_moves()
+                    .get_all_legal_moves(GAME_TYPE)
                     .map_err(|e| e.to_string())?;
 
                 let matching_move = all_moves
@@ -126,8 +129,14 @@ pub fn get_black_move(state: State<GlobalState>, app: tauri::AppHandle) -> Resul
         let mut transposition_table = transposition_table.lock().unwrap();
         let mut state = SearchState::new(transposition_table.borrow_mut());
 
-        let results = alpha_beta::search(&from_black, 4, &mut state);
-        let move_from_whites_perspective = results.best_move.inverted();
+        let params = SearchParams {
+            depth: 6,
+            game_type: GAME_TYPE,
+            ..Default::default()
+        };
+
+        let results = alpha_beta::search(&from_black, &mut state, params);
+        let move_from_whites_perspective = results.best_move.unwrap().inverted();
 
         app.emit(
             "black_move",

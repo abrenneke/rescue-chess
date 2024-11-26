@@ -1,9 +1,9 @@
 use std::time::Instant;
 
-use crate::{PieceMove, Position};
+use crate::{piece_move::GameType, PieceMove, Position};
 
 use super::{
-    alpha_beta,
+    alpha_beta::{self, SearchParams},
     search_results::{SearchResults, SearchState},
     transposition_table::TranspositionTable,
 };
@@ -46,12 +46,12 @@ impl IterativeDeepeningData {
                 search_results.nodes_searched,
                 search_results.cached_positions,
                 search_results.time_taken_ms,
-                search_results.best_move,
+                search_results.best_move.unwrap(),
                 search_results.pruned,
                 search_results.principal_variation
             );
 
-            self.best_move = Some(search_results.best_move);
+            self.best_move = search_results.best_move;
 
             depth += 1;
         }
@@ -67,7 +67,14 @@ impl IterativeDeepeningData {
         state.start_time = start_time;
         state.time_limit = time_limit;
 
-        alpha_beta::search(&self.current_position, depth, &mut state)
+        let params = SearchParams {
+            depth,
+            time_limit,
+            game_type: GameType::Rescue,
+            ..Default::default()
+        };
+
+        alpha_beta::search(&self.current_position, &mut state, params)
     }
 
     pub fn get_best_move(&self) -> Option<PieceMove> {

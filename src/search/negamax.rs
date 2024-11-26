@@ -1,4 +1,8 @@
-use crate::{evaluation::evaluate_position, piece_move::PieceMove, Position};
+use crate::{
+    evaluation::evaluate_position,
+    piece_move::{GameType, PieceMove},
+    Position,
+};
 
 pub fn negamax(position: &Position, depth: u32) -> (Option<PieceMove>, i32) {
     if depth == 0 {
@@ -8,11 +12,11 @@ pub fn negamax(position: &Position, depth: u32) -> (Option<PieceMove>, i32) {
     let mut max = i32::MIN;
     let mut best_move = None;
 
-    if position.is_checkmate().unwrap() {
+    if position.is_checkmate(GameType::Rescue).unwrap() {
         return (None, -1000);
     }
 
-    let moves = position.get_all_legal_moves().unwrap();
+    let moves = position.get_all_legal_moves(GameType::Rescue).unwrap();
 
     for mv in moves {
         // Apply the move to a clone of the position

@@ -1,6 +1,5 @@
 pub mod bitboard;
 pub mod evaluation;
-pub mod fen;
 pub mod piece;
 pub mod piece_move;
 pub mod pos;

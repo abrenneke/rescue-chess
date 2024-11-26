@@ -1,5 +1,5 @@
 use rand::Rng;
-use rescue_chess::{Color, Piece, PieceType, Pos, Position};
+use rescue_chess::{piece_move::GameType, Color, Piece, PieceType, Pos, Position};
 
 fn main() {
     let rng = rand::thread_rng();
@@ -10,8 +10,9 @@ fn main() {
 }
 
 fn random_non_checkmate_board(mut rng: impl Rng) -> Result<Position, anyhow::Error> {
+    let game_type = GameType::Rescue;
     let mut position = random_board(&mut rng);
-    while position.is_checkmate()? || position.inverted().is_checkmate()? {
+    while position.is_checkmate(game_type)? || position.inverted().is_checkmate(game_type)? {
         position = random_board(&mut rng);
     }
     Ok(position)
