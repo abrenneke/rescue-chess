@@ -1,6 +1,10 @@
 use std::i32;
 
-use crate::{evaluation::evaluate_position, piece_move::GameType, PieceMove, Position};
+use crate::{
+    evaluation::{evaluate_position, order_moves},
+    piece_move::GameType,
+    PieceMove, Position,
+};
 
 use super::{
     search_results::{SearchResults, SearchState},
@@ -179,6 +183,13 @@ pub fn alpha_beta(
 
     let moves = position.get_all_legal_moves(params.game_type).unwrap();
 
+    let prev_best_move = state
+        .transposition_table
+        .try_get(position, depth)
+        .map(|entry| entry.principal_variation);
+
+    let ordered_moves = order_moves(position, moves, prev_best_move);
+
     let mut iteration = SearchIteration {
         alpha,
         beta,
@@ -188,26 +199,8 @@ pub fn alpha_beta(
         is_white,
     };
 
-    let mut pass1 = vec![];
-    let mut pass2 = vec![];
-
-    for mv in moves.into_iter() {
-        if mv.is_capture() {
-            pass1.push(mv);
-        } else {
-            pass2.push(mv);
-        }
-    }
-
-    // Iterate through all the legal moves and search the resulting positions.
-    for mv in pass1 {
-        if let Some(result) = test_move(mv, position, &mut iteration, &params) {
-            return result;
-        }
-    }
-
-    for mv in pass2 {
-        if let Some(result) = test_move(mv, position, &mut iteration, &params) {
+    for mv in ordered_moves {
+        if let Some(result) = test_move(mv, position, &mut iteration, params) {
             return result;
         }
     }
@@ -626,7 +619,7 @@ pub mod tests {
                 depth,
                 game_type: GameType::Classic,
                 debug_print_all_moves: true,
-                debug_print_verbose: true,
+                debug_print_verbose: false,
                 ..Default::default()
             };
 

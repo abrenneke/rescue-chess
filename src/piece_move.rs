@@ -6,7 +6,7 @@ use crate::{PieceType, Pos, Position};
 mod parser;
 
 /// A move that a chess piece can make.
-#[derive(Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PieceMove {
     /// The type of piece that is moving
     pub piece_type: PieceType,
@@ -28,7 +28,7 @@ pub enum GameType {
 }
 
 /// The type of move a piece can make. Non-normal moves can store additional information, such as captured piece.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value")]
 pub enum MoveType {
     /// A move that has not been classified yet
