@@ -35,6 +35,11 @@ impl Bitboard {
     pub fn new() -> Self {
         Bitboard(0)
     }
+
+    #[inline(always)]
+    pub fn count(&self) -> usize {
+        self.0.count_ones() as usize
+    }
 }
 
 /// Displays the bitboard as a string of 1s and 0s, with each row separated by a newline.

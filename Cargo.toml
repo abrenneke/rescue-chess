@@ -21,5 +21,8 @@ name = "get_best_move"
 [[bin]]
 name = "random_position"
 
+[[bin]]
+name = "self_play"
+
 [profile.release]
 debug = true

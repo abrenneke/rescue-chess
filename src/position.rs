@@ -83,7 +83,9 @@ fn color_as_bitboard(pieces: &[Piece], color: Color) -> Bitboard {
 /// index of the piece in the pieces vector at the position of the piece.
 fn calc_position_lookup(pieces: &[Piece]) -> [Option<u8>; 64] {
     let mut position_lookup = [None; 64];
-    for (i, piece) in pieces.iter().enumerate() {
+
+    for i in 0..pieces.len() {
+        let piece = &pieces[i];
         position_lookup[piece.position.0 as usize] = Some(i as u8);
     }
 
@@ -139,15 +141,19 @@ impl Position {
             piece.position = piece.position.invert();
         }
 
-        self.calc_changes();
+        self.calc_changes(true);
     }
 
     /// When any piece has changed, this function should be called to
     /// recalculate the bitboards and position lookup.
-    pub fn calc_changes(&mut self) {
+    pub fn calc_changes(&mut self, do_calc_position_lookup: bool) {
         self.white_map = color_as_bitboard(&self.pieces, Color::White);
         self.black_map = color_as_bitboard(&self.pieces, Color::Black);
+
+        // if do_calc_position_lookup {
         self.position_lookup = calc_position_lookup(&self.pieces);
+        // }
+
         self.white_king = self
             .pieces
             .iter()
@@ -237,15 +243,33 @@ impl Position {
         Ok(())
     }
 
+    #[inline]
+    fn update_position_lookup(&mut self, from: Pos, to: Pos, piece_idx: u8) {
+        self.position_lookup[from.0 as usize] = None;
+        self.position_lookup[to.0 as usize] = Some(piece_idx);
+    }
+
     /// Moves a piece from one position to another.
     pub fn move_piece(&mut self, from: Pos, to: Pos) -> Result<(), anyhow::Error> {
         if self.white_map.get(to) || self.black_map.get(to) {
             return Err(anyhow::anyhow!("Position occupied"));
         }
 
-        self.get_piece_at_mut(from).unwrap().position = to;
-        self.calc_changes();
+        match self.position_lookup[from.0 as usize] {
+            Some(piece_idx) => {
+                self.pieces[piece_idx as usize].position = to;
+                self.update_position_lookup(from, to, piece_idx);
+            }
+            None => {
+                return Err(anyhow::anyhow!(
+                    "No piece at position {}, board state:\n{}",
+                    from.to_algebraic(),
+                    self.to_board_string_with_rank_file()
+                ));
+            }
+        }
 
+        self.calc_changes(false);
         Ok(())
     }
 
@@ -253,7 +277,7 @@ impl Position {
     pub fn remove_piece_at(&mut self, position: Pos) -> Result<(), anyhow::Error> {
         if let Some(index) = self.position_lookup[position.0 as usize] {
             self.pieces.remove(index as usize);
-            self.calc_changes();
+            self.calc_changes(true);
             Ok(())
         } else {
             Err(anyhow::anyhow!("No piece at position"))
@@ -267,7 +291,7 @@ impl Position {
         }
 
         self.pieces.push(piece);
-        self.calc_changes();
+        self.calc_changes(true);
 
         Ok(())
     }
@@ -520,9 +544,11 @@ impl Position {
     }
 
     pub fn apply_move(&mut self, mv: PieceMove) -> Result<(), anyhow::Error> {
-        let piece = self
-            .get_piece_at(mv.from)
-            .ok_or(anyhow::anyhow!("No piece at position"))?;
+        let piece = self.get_piece_at(mv.from).ok_or(anyhow::anyhow!(
+            "No piece at position {}, board state:\n{}",
+            mv.from.to_algebraic(),
+            self.to_board_string_with_rank_file()
+        ))?;
 
         let legal_moves = piece.get_legal_moves(self.white_map, self.black_map);
 
@@ -532,7 +558,11 @@ impl Position {
         };
 
         if !legal_moves.get(mv.to) && !is_rescue_or_drop {
-            return Err(anyhow::anyhow!("Illegal move"));
+            return Err(anyhow::anyhow!(
+                "Illegal move {}! Board state:\n{}",
+                mv.to_string(),
+                self.to_board_string_with_rank_file()
+            ));
         }
 
         match mv.move_type {
@@ -663,7 +693,7 @@ impl Position {
             }
         }
 
-        self.calc_changes();
+        self.calc_changes(true);
 
         Ok(())
     }
