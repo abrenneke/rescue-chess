@@ -1,4 +1,8 @@
-use crate::{Bitboard, Pos};
+use crate::{
+    evaluation::square_bonus::SquareBonus,
+    piece_move::{get_legal_moves, CanMove},
+    Bitboard, Pos,
+};
 
 pub mod bishop;
 pub mod king;
@@ -6,6 +10,13 @@ pub mod knight;
 pub mod pawn;
 pub mod queen;
 pub mod rook;
+
+pub use bishop::Bishop;
+pub use king::King;
+pub use knight::Knight;
+pub use pawn::Pawn;
+pub use queen::Queen;
+pub use rook::Rook;
 
 use colored::*;
 use serde::{Deserialize, Serialize};
@@ -20,32 +31,26 @@ pub enum PieceType {
     King,
 }
 
+pub trait ChessPiece: CanMove + SquareBonus {
+    fn piece_type() -> PieceType;
+    fn to_unicode() -> &'static str;
+}
+
+pub trait RescueChessPiece: ChessPiece {
+    fn can_hold(other: PieceType) -> bool;
+}
+
 impl PieceType {
     pub fn can_hold(&self, other: PieceType) -> bool {
         match self {
             // Right now pieces can rescue pieces of the same type, but maybe
             // pawns couldn't hold other pawns, or pieces couldn't hold same type pieces
-            PieceType::Pawn => match other {
-                PieceType::Pawn => true,
-                _ => false,
-            },
-            PieceType::Rook => match other {
-                PieceType::Pawn | PieceType::Rook | PieceType::Knight | PieceType::Bishop => true,
-                _ => false,
-            },
-            PieceType::Knight => match other {
-                PieceType::Pawn | PieceType::Knight | PieceType::Bishop => true,
-                _ => false,
-            },
-            PieceType::Bishop => match other {
-                PieceType::Pawn | PieceType::Bishop => true,
-                _ => false,
-            },
-            PieceType::Queen => match other {
-                PieceType::King => false,
-                _ => true,
-            },
-            PieceType::King => true,
+            PieceType::Pawn => Pawn::can_hold(other),
+            PieceType::Rook => Rook::can_hold(other),
+            PieceType::Knight => Knight::can_hold(other),
+            PieceType::Bishop => Bishop::can_hold(other),
+            PieceType::Queen => Queen::can_hold(other),
+            PieceType::King => King::can_hold(other),
         }
     }
 }
@@ -56,7 +61,7 @@ pub enum Color {
     Black,
 }
 
-#[derive(Debug, PartialEq, Copy, Clone, Hash, Eq, Serialize)]
+#[derive(PartialEq, Copy, Clone, Hash, Eq, Serialize)]
 pub struct Piece {
     pub piece_type: PieceType,
     pub color: Color,
@@ -87,23 +92,23 @@ impl Piece {
 
     pub fn get_legal_moves(&self, white: Bitboard, black: Bitboard) -> Bitboard {
         match self.piece_type {
-            PieceType::Pawn => pawn::get_legal_moves(self, white, black),
-            PieceType::Knight => knight::get_legal_moves(self, white, black),
-            PieceType::Bishop => bishop::get_legal_moves(self, white, black),
-            PieceType::Rook => rook::get_legal_moves(self, white, black),
-            PieceType::Queen => queen::get_legal_moves(self, white, black),
-            PieceType::King => king::get_legal_moves(self, white, black),
+            PieceType::Pawn => get_legal_moves::<Pawn>(self, white, black),
+            PieceType::Knight => get_legal_moves::<Knight>(self, white, black),
+            PieceType::Bishop => get_legal_moves::<Bishop>(self, white, black),
+            PieceType::Rook => get_legal_moves::<Rook>(self, white, black),
+            PieceType::Queen => get_legal_moves::<Queen>(self, white, black),
+            PieceType::King => get_legal_moves::<King>(self, white, black),
         }
     }
 
     pub fn to_colored_unicode(&self) -> ColoredString {
         let piece = match self.piece_type {
-            PieceType::Pawn => "♟",
-            PieceType::Knight => "♞",
-            PieceType::Bishop => "♝",
-            PieceType::Rook => "♜",
-            PieceType::Queen => "♛",
-            PieceType::King => "♚",
+            PieceType::Pawn => Pawn::to_unicode(),
+            PieceType::Knight => Knight::to_unicode(),
+            PieceType::Bishop => Bishop::to_unicode(),
+            PieceType::Rook => Rook::to_unicode(),
+            PieceType::Queen => Queen::to_unicode(),
+            PieceType::King => King::to_unicode(),
         };
 
         match self.color {

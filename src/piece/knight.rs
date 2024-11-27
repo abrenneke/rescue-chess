@@ -1,50 +1,83 @@
-use crate::{bitboard::Bitboard, piece::Piece};
+use crate::{
+    bitboard::Bitboard, evaluation::square_bonus::SquareBonus, piece::Piece, piece_move::CanMove,
+};
 
-pub fn get_legal_moves(piece: &Piece, white: Bitboard, _black: Bitboard) -> Bitboard {
-    let mut board = Bitboard::new();
-    let pos = piece.position;
+use super::{ChessPiece, PieceType, RescueChessPiece};
 
-    // Up left
-    if let Some(pos) = pos.moved(-1, -2) {
-        board.set(pos);
+pub struct Knight;
+
+impl RescueChessPiece for Knight {
+    fn can_hold(other: super::PieceType) -> bool {
+        match other {
+            PieceType::Pawn | PieceType::Knight | PieceType::Bishop => true,
+            _ => false,
+        }
+    }
+}
+
+impl ChessPiece for Knight {
+    fn piece_type() -> crate::PieceType {
+        crate::PieceType::Knight
     }
 
-    // Up right
-    if let Some(pos) = pos.moved(1, -2) {
-        board.set(pos);
+    fn to_unicode() -> &'static str {
+        "♞"
     }
+}
 
-    // Right up
-    if let Some(pos) = pos.moved(2, -1) {
-        board.set(pos);
+impl SquareBonus for Knight {
+    fn square_bonus(_pos: crate::Pos) -> i32 {
+        0
     }
+}
 
-    // Right down
-    if let Some(pos) = pos.moved(2, 1) {
-        board.set(pos);
+impl CanMove for Knight {
+    fn get_legal_moves(piece: &Piece, white: Bitboard, _black: Bitboard) -> Bitboard {
+        let mut board = Bitboard::new();
+        let pos = piece.position;
+
+        // Up left
+        if let Some(pos) = pos.moved(-1, -2) {
+            board.set(pos);
+        }
+
+        // Up right
+        if let Some(pos) = pos.moved(1, -2) {
+            board.set(pos);
+        }
+
+        // Right up
+        if let Some(pos) = pos.moved(2, -1) {
+            board.set(pos);
+        }
+
+        // Right down
+        if let Some(pos) = pos.moved(2, 1) {
+            board.set(pos);
+        }
+
+        // Down right
+        if let Some(pos) = pos.moved(1, 2) {
+            board.set(pos);
+        }
+
+        // Down left
+        if let Some(pos) = pos.moved(-1, 2) {
+            board.set(pos);
+        }
+
+        // Left down
+        if let Some(pos) = pos.moved(-2, 1) {
+            board.set(pos);
+        }
+
+        // Left up
+        if let Some(pos) = pos.moved(-2, -1) {
+            board.set(pos);
+        }
+
+        board & !white
     }
-
-    // Down right
-    if let Some(pos) = pos.moved(1, 2) {
-        board.set(pos);
-    }
-
-    // Down left
-    if let Some(pos) = pos.moved(-1, 2) {
-        board.set(pos);
-    }
-
-    // Left down
-    if let Some(pos) = pos.moved(-2, 1) {
-        board.set(pos);
-    }
-
-    // Left up
-    if let Some(pos) = pos.moved(-2, -1) {
-        board.set(pos);
-    }
-
-    board & !white
 }
 
 #[cfg(test)]

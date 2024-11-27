@@ -1,9 +1,17 @@
 use parser::RescueOrDrop;
 use serde::{Deserialize, Serialize};
 
-use crate::{PieceType, Pos, Position};
+use crate::{Bitboard, Piece, PieceType, Pos, Position};
 
 mod parser;
+
+pub trait CanMove {
+    fn get_legal_moves(piece: &Piece, white: Bitboard, black: Bitboard) -> Bitboard;
+}
+
+pub fn get_legal_moves<T: CanMove>(piece: &Piece, white: Bitboard, black: Bitboard) -> Bitboard {
+    T::get_legal_moves(piece, white, black)
+}
 
 /// A move that a chess piece can make.
 #[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

@@ -1,63 +1,95 @@
-use crate::{bitboard::Bitboard, piece::Piece};
+use crate::{
+    bitboard::Bitboard, evaluation::square_bonus::SquareBonus, piece::Piece, piece_move::CanMove,
+};
 
-pub fn get_legal_moves(piece: &Piece, white: Bitboard, black: Bitboard) -> Bitboard {
-    let mut board = Bitboard::new();
+use super::{ChessPiece, PieceType, RescueChessPiece};
 
-    // Up
-    let mut position = piece.position;
-    while position.can_move_up() {
-        position = position.moved_unchecked(0, -1);
-        if white.get(position) {
-            break;
-        }
-        board.set(position);
-        if black.get(position) {
-            break;
+pub struct Rook;
+
+impl RescueChessPiece for Rook {
+    fn can_hold(other: crate::PieceType) -> bool {
+        match other {
+            PieceType::Pawn | PieceType::Rook | PieceType::Knight | PieceType::Bishop => true,
+            _ => false,
         }
     }
-
-    // Down
-    position = piece.position;
-    while position.can_move_down() {
-        position = position.moved_unchecked(0, 1);
-        if white.get(position) {
-            break;
-        }
-        board.set(position);
-        if black.get(position) {
-            break;
-        }
-    }
-
-    // Left
-    position = piece.position;
-    while position.can_move_left() {
-        position = position.moved_unchecked(-1, 0);
-        if white.get(position) {
-            break;
-        }
-        board.set(position);
-        if black.get(position) {
-            break;
-        }
-    }
-
-    // Right
-    position = piece.position;
-    while position.can_move_right() {
-        position = position.moved_unchecked(1, 0);
-        if white.get(position) {
-            break;
-        }
-        board.set(position);
-        if black.get(position) {
-            break;
-        }
-    }
-
-    board
 }
 
+impl ChessPiece for Rook {
+    fn piece_type() -> crate::PieceType {
+        crate::PieceType::Rook
+    }
+
+    fn to_unicode() -> &'static str {
+        "♜"
+    }
+}
+
+impl SquareBonus for Rook {
+    fn square_bonus(_pos: crate::Pos) -> i32 {
+        0
+    }
+}
+
+impl CanMove for Rook {
+    fn get_legal_moves(piece: &Piece, white: Bitboard, black: Bitboard) -> Bitboard {
+        let mut board = Bitboard::new();
+
+        // Up
+        let mut position = piece.position;
+        while position.can_move_up() {
+            position = position.moved_unchecked(0, -1);
+            if white.get(position) {
+                break;
+            }
+            board.set(position);
+            if black.get(position) {
+                break;
+            }
+        }
+
+        // Down
+        position = piece.position;
+        while position.can_move_down() {
+            position = position.moved_unchecked(0, 1);
+            if white.get(position) {
+                break;
+            }
+            board.set(position);
+            if black.get(position) {
+                break;
+            }
+        }
+
+        // Left
+        position = piece.position;
+        while position.can_move_left() {
+            position = position.moved_unchecked(-1, 0);
+            if white.get(position) {
+                break;
+            }
+            board.set(position);
+            if black.get(position) {
+                break;
+            }
+        }
+
+        // Right
+        position = piece.position;
+        while position.can_move_right() {
+            position = position.moved_unchecked(1, 0);
+            if white.get(position) {
+                break;
+            }
+            board.set(position);
+            if black.get(position) {
+                break;
+            }
+        }
+
+        board
+    }
+}
 #[cfg(test)]
 mod tests {
     use crate::{Bitboard, Piece, PieceType};

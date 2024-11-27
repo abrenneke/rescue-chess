@@ -1,52 +1,78 @@
-use crate::bitboard::Bitboard;
+use crate::{bitboard::Bitboard, evaluation::square_bonus::SquareBonus, piece_move::CanMove};
 
-use super::Piece;
+use super::{ChessPiece, Piece, RescueChessPiece};
 
-pub fn get_legal_moves(piece: &Piece, white: Bitboard, _black: Bitboard) -> Bitboard {
-    let mut board = Bitboard::new();
-    let pos = piece.position;
+pub struct King;
 
-    // Up left
-    if pos.can_move_left() && pos.can_move_up() {
-        board.set(pos.moved_unchecked(-1, -1));
+impl RescueChessPiece for King {
+    fn can_hold(_other: super::PieceType) -> bool {
+        true
+    }
+}
+
+impl SquareBonus for King {
+    fn square_bonus(_pos: crate::Pos) -> i32 {
+        0
+    }
+}
+
+impl ChessPiece for King {
+    fn piece_type() -> crate::PieceType {
+        crate::PieceType::King
     }
 
-    // Up
-    if pos.can_move_up() {
-        board.set(pos.moved_unchecked(0, -1));
+    fn to_unicode() -> &'static str {
+        "♚"
     }
+}
 
-    // Up right
-    if pos.can_move_right() && pos.can_move_up() {
-        board.set(pos.moved_unchecked(1, -1));
+impl CanMove for King {
+    fn get_legal_moves(piece: &Piece, white: Bitboard, _black: Bitboard) -> Bitboard {
+        let mut board = Bitboard::new();
+        let pos = piece.position;
+
+        // Up left
+        if pos.can_move_left() && pos.can_move_up() {
+            board.set(pos.moved_unchecked(-1, -1));
+        }
+
+        // Up
+        if pos.can_move_up() {
+            board.set(pos.moved_unchecked(0, -1));
+        }
+
+        // Up right
+        if pos.can_move_right() && pos.can_move_up() {
+            board.set(pos.moved_unchecked(1, -1));
+        }
+
+        // Right
+        if pos.can_move_right() {
+            board.set(pos.moved_unchecked(1, 0));
+        }
+
+        // Down right
+        if pos.can_move_down() && pos.can_move_right() {
+            board.set(pos.moved_unchecked(1, 1));
+        }
+
+        // Down
+        if pos.can_move_down() {
+            board.set(pos.moved_unchecked(0, 1));
+        }
+
+        // Down left
+        if pos.can_move_left() && pos.can_move_down() {
+            board.set(pos.moved_unchecked(-1, 1));
+        }
+
+        // Left
+        if pos.can_move_left() {
+            board.set(pos.moved_unchecked(-1, 0));
+        }
+
+        board & !white
     }
-
-    // Right
-    if pos.can_move_right() {
-        board.set(pos.moved_unchecked(1, 0));
-    }
-
-    // Down right
-    if pos.can_move_down() && pos.can_move_right() {
-        board.set(pos.moved_unchecked(1, 1));
-    }
-
-    // Down
-    if pos.can_move_down() {
-        board.set(pos.moved_unchecked(0, 1));
-    }
-
-    // Down left
-    if pos.can_move_left() && pos.can_move_down() {
-        board.set(pos.moved_unchecked(-1, 1));
-    }
-
-    // Left
-    if pos.can_move_left() {
-        board.set(pos.moved_unchecked(-1, 0));
-    }
-
-    board & !white
 }
 
 #[cfg(test)]

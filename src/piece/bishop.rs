@@ -1,61 +1,94 @@
-use crate::{bitboard::Bitboard, piece::Piece};
+use crate::{
+    bitboard::Bitboard, evaluation::square_bonus::SquareBonus, piece::Piece, piece_move::CanMove,
+};
 
-pub fn get_legal_moves(piece: &Piece, white: Bitboard, black: Bitboard) -> Bitboard {
-    let mut board = Bitboard::new();
-    let mut pos = piece.position;
+use super::{ChessPiece, PieceType, RescueChessPiece};
 
-    // Down Left
-    while pos.can_move_down() && pos.can_move_left() {
-        pos = pos.moved_unchecked(-1, 1);
-        if white.get(pos) {
-            break;
-        }
-        board.set(pos);
-        if black.get(pos) {
-            break;
+pub struct Bishop;
+
+impl RescueChessPiece for Bishop {
+    fn can_hold(other: PieceType) -> bool {
+        match other {
+            PieceType::Pawn | PieceType::Bishop => true,
+            _ => false,
         }
     }
+}
 
-    // Down Right
-    pos = piece.position;
-    while pos.can_move_down() && pos.can_move_right() {
-        pos = pos.moved_unchecked(1, 1);
-        if white.get(pos) {
-            break;
-        }
-        board.set(pos);
-        if black.get(pos) {
-            break;
-        }
+impl ChessPiece for Bishop {
+    fn piece_type() -> crate::PieceType {
+        crate::PieceType::Bishop
     }
 
-    // Down right
-    pos = piece.position;
-    while pos.can_move_up() && pos.can_move_left() {
-        pos = pos.moved_unchecked(-1, -1);
-        if white.get(pos) {
-            break;
-        }
-        board.set(pos);
-        if black.get(pos) {
-            break;
-        }
+    fn to_unicode() -> &'static str {
+        "♝"
     }
+}
 
-    // Top left
-    pos = piece.position;
-    while pos.can_move_up() && pos.can_move_right() {
-        pos = pos.moved_unchecked(1, -1);
-        if white.get(pos) {
-            break;
-        }
-        board.set(pos);
-        if black.get(pos) {
-            break;
-        }
+impl SquareBonus for Bishop {
+    fn square_bonus(_pos: crate::Pos) -> i32 {
+        0
     }
+}
 
-    board
+impl CanMove for Bishop {
+    fn get_legal_moves(piece: &Piece, white: Bitboard, black: Bitboard) -> Bitboard {
+        let mut board = Bitboard::new();
+        let mut pos = piece.position;
+
+        // Down Left
+        while pos.can_move_down() && pos.can_move_left() {
+            pos = pos.moved_unchecked(-1, 1);
+            if white.get(pos) {
+                break;
+            }
+            board.set(pos);
+            if black.get(pos) {
+                break;
+            }
+        }
+
+        // Down Right
+        pos = piece.position;
+        while pos.can_move_down() && pos.can_move_right() {
+            pos = pos.moved_unchecked(1, 1);
+            if white.get(pos) {
+                break;
+            }
+            board.set(pos);
+            if black.get(pos) {
+                break;
+            }
+        }
+
+        // Down right
+        pos = piece.position;
+        while pos.can_move_up() && pos.can_move_left() {
+            pos = pos.moved_unchecked(-1, -1);
+            if white.get(pos) {
+                break;
+            }
+            board.set(pos);
+            if black.get(pos) {
+                break;
+            }
+        }
+
+        // Top left
+        pos = piece.position;
+        while pos.can_move_up() && pos.can_move_right() {
+            pos = pos.moved_unchecked(1, -1);
+            if white.get(pos) {
+                break;
+            }
+            board.set(pos);
+            if black.get(pos) {
+                break;
+            }
+        }
+
+        board
+    }
 }
 
 #[cfg(test)]

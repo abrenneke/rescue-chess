@@ -275,6 +275,36 @@ pub fn parse_position_from_fen(notation: &str) -> Result<Position, anyhow::Error
     ))
 }
 
+/// Converts a piece type and color to FEN notation.
+fn piece_type_to_fen(piece_type: PieceType, color: Color) -> char {
+    match piece_type {
+        PieceType::Pawn => match color {
+            Color::White => 'P',
+            Color::Black => 'p',
+        },
+        PieceType::Knight => match color {
+            Color::White => 'N',
+            Color::Black => 'n',
+        },
+        PieceType::Bishop => match color {
+            Color::White => 'B',
+            Color::Black => 'b',
+        },
+        PieceType::Rook => match color {
+            Color::White => 'R',
+            Color::Black => 'r',
+        },
+        PieceType::Queen => match color {
+            Color::White => 'Q',
+            Color::Black => 'q',
+        },
+        PieceType::King => match color {
+            Color::White => 'K',
+            Color::Black => 'k',
+        },
+    }
+}
+
 /// Converts the position to FEN notation.
 ///
 /// # Example
@@ -301,56 +331,13 @@ pub fn position_to_fen(position: &Position) -> String {
                     empty = 0;
                 }
 
-                let character = match piece.piece_type {
-                    PieceType::Pawn => match piece.color {
-                        Color::White => 'P',
-                        Color::Black => 'p',
-                    },
-                    PieceType::Knight => match piece.color {
-                        Color::White => 'N',
-                        Color::Black => 'n',
-                    },
-                    PieceType::Bishop => match piece.color {
-                        Color::White => 'B',
-                        Color::Black => 'b',
-                    },
-                    PieceType::Rook => match piece.color {
-                        Color::White => 'R',
-                        Color::Black => 'r',
-                    },
-                    PieceType::Queen => match piece.color {
-                        Color::White => 'Q',
-                        Color::Black => 'q',
-                    },
-                    PieceType::King => match piece.color {
-                        Color::White => 'K',
-                        Color::Black => 'k',
-                    },
-                };
+                let character = piece_type_to_fen(piece.piece_type, piece.color);
 
                 fen.push(character);
 
                 if let Some(holding) = piece.holding {
                     fen.push('x');
-
-                    match piece.color {
-                        Color::White => fen.push(match holding {
-                            PieceType::Pawn => 'P',
-                            PieceType::Knight => 'N',
-                            PieceType::Bishop => 'B',
-                            PieceType::Rook => 'R',
-                            PieceType::Queen => 'Q',
-                            PieceType::King => 'K',
-                        }),
-                        Color::Black => fen.push(match holding {
-                            PieceType::Pawn => 'p',
-                            PieceType::Knight => 'n',
-                            PieceType::Bishop => 'b',
-                            PieceType::Rook => 'r',
-                            PieceType::Queen => 'q',
-                            PieceType::King => 'k',
-                        }),
-                    }
+                    fen.push(piece_type_to_fen(holding, piece.color))
                 }
             } else {
                 empty += 1;

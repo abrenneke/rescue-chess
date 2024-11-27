@@ -1,3 +1,5 @@
+pub mod square_bonus;
+
 use crate::{piece_move::MoveType, Color, PieceMove, PieceType, Position};
 
 pub fn piece_value(piece_type: PieceType) -> i32 {
@@ -48,7 +50,7 @@ pub fn order_moves(
     scored_moves.into_iter().map(|sm| sm.mv).collect()
 }
 
-fn score_move(position: &Position, mv: &PieceMove, prev_best_move: Option<PieceMove>) -> i32 {
+fn score_move(_position: &Position, mv: &PieceMove, prev_best_move: Option<PieceMove>) -> i32 {
     let mut score = 0;
 
     // 1. Hash table move from previous iteration
