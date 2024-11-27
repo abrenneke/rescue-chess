@@ -323,7 +323,8 @@ pub fn position_to_fen(position: &Position) -> String {
         let mut empty = 0;
         for file in 0..8 {
             let pos = Pos::xy(file, rank);
-            let piece = position.pieces.iter().find(|piece| piece.position == pos);
+
+            let piece = position.get_piece_at(pos);
 
             if let Some(piece) = piece {
                 if empty > 0 {

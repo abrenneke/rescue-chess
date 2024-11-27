@@ -7,6 +7,7 @@ use crate::{
 };
 
 use super::{
+    quiescence_search::quiescence_search,
     search_results::{SearchResults, SearchState},
     transposition_table::TranspositionTableEntry,
 };
@@ -125,13 +126,13 @@ pub fn alpha_beta(
 ) -> Result<SearchResult, Error> {
     // If we have already searched this position to the same depth or greater,
     // we can use the cached result directly.
-    if let Some(entry) = state.transposition_table.try_get(position, depth) {
-        state.cached_positions += 1;
-        return Ok(SearchResult {
-            principal_variation: Some(state.transposition_table.principal_variation_list(position)),
-            score: entry.score,
-        });
-    }
+    // if let Some(entry) = state.transposition_table.try_get(position, depth) {
+    //     state.cached_positions += 1;
+    //     return Ok(SearchResult {
+    //         principal_variation: Some(state.transposition_table.principal_variation_list(position)),
+    //         score: entry.score,
+    //     });
+    // }
 
     // If we have exceeded the time limit, we should return an error.
     if state.start_time.elapsed().as_millis() >= state.time_limit {
@@ -342,139 +343,6 @@ fn test_move(
     }
 }
 
-fn quiescence_search(
-    position: &Position,
-    mut alpha: i32,
-    beta: i32,
-    depth: u32,
-    state: &mut SearchState,
-    params: &SearchParams,
-    is_white: bool,
-    initial_depth: u32,
-) -> Result<SearchResult, Error> {
-    // First, do a standing pat evaluation
-    let stand_pat = evaluate_position(position);
-
-    // Fail-high if standing pat beats beta
-    if stand_pat >= beta {
-        if params.debug_print_verbose {
-            println!(
-                "{}[Quiescence] Standing pat beats beta: {}",
-                "\t".repeat((initial_depth + (params.quiescence_depth - depth)) as usize),
-                stand_pat
-            );
-        }
-
-        return Ok(SearchResult {
-            principal_variation: Some(vec![]),
-            score: beta,
-        });
-    }
-
-    // Update alpha if standing pat is better
-    if stand_pat > alpha {
-        if params.debug_print_verbose {
-            println!(
-                "{}[Quiescence] Standing pat is better: {}",
-                "\t".repeat((initial_depth + (params.quiescence_depth - depth)) as usize),
-                stand_pat
-            );
-        }
-
-        alpha = stand_pat;
-    }
-
-    // Stop searching if we've hit maximum quiescence depth
-    if depth == 0 {
-        if params.debug_print_verbose {
-            println!(
-                "{}[Quiescence] Reached maximum depth: {}",
-                "\t".repeat((initial_depth + (params.quiescence_depth - depth)) as usize),
-                stand_pat
-            );
-        }
-
-        return Ok(SearchResult {
-            principal_variation: Some(vec![]),
-            score: stand_pat,
-        });
-    }
-
-    // Get only capture moves
-    let moves = position.get_all_legal_moves(params.game_type).unwrap();
-    let capture_moves: Vec<PieceMove> = moves.into_iter().filter(|mv| mv.is_capture()).collect();
-
-    // If no captures are available, return standing pat
-    if capture_moves.is_empty() {
-        if params.debug_print_verbose {
-            println!(
-                "{}[Quiescence] No captures available: {}",
-                "\t".repeat((initial_depth + (params.quiescence_depth - depth)) as usize),
-                stand_pat
-            );
-        }
-
-        return Ok(SearchResult {
-            principal_variation: Some(vec![]),
-            score: stand_pat,
-        });
-    }
-
-    let mut best_line = None;
-
-    // Search capture moves
-    for mv in capture_moves {
-        // Apply move
-        let mut child = position.clone();
-        child.apply_move(mv).unwrap();
-        child.invert();
-
-        if params.debug_print_verbose {
-            println!(
-                "{}[Quiescence] Searching move: {}",
-                "\t".repeat((initial_depth + (params.quiescence_depth - depth)) as usize),
-                mv
-            );
-        }
-
-        // Recursively search position
-        let result = quiescence_search(
-            &child,
-            -beta,
-            -alpha,
-            depth - 1,
-            state,
-            params,
-            !is_white,
-            initial_depth,
-        )?;
-
-        let score = -result.score;
-
-        // Beta cutoff
-        if score >= beta {
-            state.pruned += 1;
-            return Ok(SearchResult {
-                principal_variation: None,
-                score: beta,
-            });
-        }
-
-        // Update alpha and best line
-        if score > alpha {
-            alpha = score;
-            let mut principal_variation = result.principal_variation.unwrap_or_default();
-            principal_variation.insert(0, mv);
-            best_line = Some(principal_variation);
-        }
-    }
-
-    Ok(SearchResult {
-        principal_variation: best_line,
-        score: alpha,
-    })
-}
-
 #[cfg(test)]
 pub mod tests {
     use crate::search::transposition_table::TranspositionTable;
@@ -559,8 +427,6 @@ pub mod tests {
         )
         .unwrap();
 
-        println!("{}", position.to_board_string_with_rank_file());
-
         // Test at multiple depths to see where it breaks
         for depth in 1..=4 {
             let mut transposition_table = TranspositionTable::new();
@@ -570,9 +436,11 @@ pub mod tests {
                 depth,
                 game_type: GameType::Classic,
                 debug_print_all_moves: true,
-                debug_print_verbose: false,
+                debug_print_verbose: true,
                 ..Default::default()
             };
+
+            dbg!(position.get_all_legal_moves(GameType::Classic)).unwrap();
 
             let result = search(&position, &mut state, params);
             let best_move = result.best_move.unwrap().to_string();
@@ -608,7 +476,7 @@ pub mod tests {
     fn test_obvious_defense() {
         let position = Position::from_moves(&["e4", "e6", "e5", "Nc6"], GameType::Classic).unwrap();
 
-        println!("{}", position.to_board_string_with_rank_file());
+        println!("{}", position.to_board_string_with_rank_file(false));
 
         // Test at multiple depths to see where it breaks
         for depth in 2..=5 {

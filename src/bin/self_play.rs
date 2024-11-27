@@ -24,6 +24,9 @@ struct Cli {
     #[arg(short = 'p', long, default_value = "500")]
     pub pause_ms: u64,
 
+    #[arg(short = 'u', long)]
+    pub unicode: bool,
+
     #[arg(long)]
     pub starting_fen: Option<String>,
 }
@@ -43,23 +46,16 @@ fn main() {
     };
 
     // Create separate transposition tables for each player
-    let mut white_tt = TranspositionTable::new();
-    let mut black_tt = TranspositionTable::new();
+    let mut transposition_table = TranspositionTable::new();
 
     let mut move_number = 1;
     let mut is_blacks_turn = false;
 
     println!("\nStarting position:");
-    println!("{}", position.to_board_string_with_rank_file());
+    println!("{}", position.to_board_string_with_rank_file(args.unicode));
 
     while !position.is_checkmate(game_type).unwrap() {
-        let current_tt = if is_blacks_turn {
-            &mut black_tt
-        } else {
-            &mut white_tt
-        };
-
-        let mut state = SearchState::new(current_tt);
+        let mut state = SearchState::new(&mut transposition_table);
 
         let params = SearchParams {
             depth: args.depth,
@@ -86,6 +82,9 @@ fn main() {
                 }
             );
             println!("Nodes searched: {}", state.nodes_searched);
+            println!("Time taken: {}", state.start_time.elapsed().as_millis());
+            println!("Cache hits: {}", state.cached_positions);
+            println!("Pruned: {}", state.pruned);
 
             position.apply_move(best_move.clone()).unwrap();
 
@@ -93,9 +92,19 @@ fn main() {
             println!(
                 "{}",
                 if is_blacks_turn {
-                    position.inverted().to_board_string_with_rank_file()
+                    position
+                        .inverted()
+                        .to_board_string_with_rank_file(args.unicode)
                 } else {
-                    position.to_board_string_with_rank_file()
+                    position.to_board_string_with_rank_file(args.unicode)
+                }
+            );
+            println!(
+                "{}",
+                if is_blacks_turn {
+                    position.inverted().to_fen()
+                } else {
+                    position.to_fen()
                 }
             );
 
@@ -121,9 +130,11 @@ fn main() {
     println!(
         "{}",
         if is_blacks_turn {
-            position.inverted().to_board_string_with_rank_file()
+            position
+                .inverted()
+                .to_board_string_with_rank_file(args.unicode)
         } else {
-            position.to_board_string_with_rank_file()
+            position.to_board_string_with_rank_file(args.unicode)
         }
     );
 }

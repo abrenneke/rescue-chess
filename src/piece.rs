@@ -1,8 +1,4 @@
-use crate::{
-    evaluation::square_bonus::SquareBonus,
-    piece_move::{get_legal_moves, CanMove},
-    Bitboard, Pos,
-};
+use crate::{evaluation::square_bonus::SquareBonus, piece_move::CanMove, Bitboard, Pos};
 
 pub mod bishop;
 pub mod king;
@@ -61,6 +57,15 @@ pub enum Color {
     Black,
 }
 
+impl Color {
+    pub fn invert(&self) -> Color {
+        match self {
+            Color::White => Color::Black,
+            Color::Black => Color::White,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Copy, Clone, Hash, Eq, Serialize)]
 pub struct Piece {
     pub piece_type: PieceType,
@@ -92,12 +97,12 @@ impl Piece {
 
     pub fn get_legal_moves(&self, white: Bitboard, black: Bitboard) -> Bitboard {
         match self.piece_type {
-            PieceType::Pawn => get_legal_moves::<Pawn>(self, white, black),
-            PieceType::Knight => get_legal_moves::<Knight>(self, white, black),
-            PieceType::Bishop => get_legal_moves::<Bishop>(self, white, black),
-            PieceType::Rook => get_legal_moves::<Rook>(self, white, black),
-            PieceType::Queen => get_legal_moves::<Queen>(self, white, black),
-            PieceType::King => get_legal_moves::<King>(self, white, black),
+            PieceType::Pawn => Pawn::get_legal_moves(self, white, black),
+            PieceType::Knight => Knight::get_legal_moves(self, white, black),
+            PieceType::Bishop => Bishop::get_legal_moves(self, white, black),
+            PieceType::Rook => Rook::get_legal_moves(self, white, black),
+            PieceType::Queen => Queen::get_legal_moves(self, white, black),
+            PieceType::King => King::get_legal_moves(self, white, black),
         }
     }
 

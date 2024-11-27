@@ -19,31 +19,41 @@ fn random_non_checkmate_board(mut rng: impl Rng) -> Result<Position, anyhow::Err
 }
 
 fn random_board(mut rng: impl Rng) -> Position {
-    let mut pieces = Position::start_position().pieces;
+    let mut start_position = Position::start_position();
     let mut destination_position: Position = "8/8/8/8/8/8/8/8".into();
 
     // For each piece, place it in a random position on the board.
     // It doesn't matter if the pieces clobber each other, as it just means those pieces have been captured.
-    for piece in pieces
+    for piece in start_position
+        .white_pieces
         .iter_mut()
         .filter(|p| p.piece_type != PieceType::King)
     {
         piece.position = Pos::xy(rng.gen_range(0..8), rng.gen_range(0..8));
     }
 
-    pieces.push(Piece::new(
+    for piece in start_position
+        .black_pieces
+        .iter_mut()
+        .filter(|p| p.piece_type != PieceType::King)
+    {
+        piece.position = Pos::xy(rng.gen_range(0..8), rng.gen_range(0..8));
+    }
+
+    start_position.white_pieces.push(Piece::new(
         PieceType::King,
         Color::White,
         Pos::xy(rng.gen_range(0..8), rng.gen_range(0..8)),
     ));
-    pieces.push(Piece::new(
+    start_position.black_pieces.push(Piece::new(
         PieceType::King,
         Color::Black,
         Pos::xy(rng.gen_range(0..8), rng.gen_range(0..8)),
     ));
 
-    destination_position.pieces = pieces;
-    destination_position.calc_changes();
+    destination_position.white_pieces = start_position.white_pieces;
+    destination_position.black_pieces = start_position.black_pieces;
+    destination_position.calc_changes(true);
 
     destination_position
 }

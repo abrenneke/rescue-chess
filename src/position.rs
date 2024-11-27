@@ -1,6 +1,8 @@
 mod fen;
 
-use std::hash::Hash;
+use std::{hash::Hash, mem};
+
+use colored::Colorize;
 
 use crate::{
     bitboard::Bitboard,
@@ -45,7 +47,10 @@ impl Default for CastlingRights {
 #[derive(Debug, Clone, Eq)]
 pub struct Position {
     /// The pieces on the board
-    pub pieces: arrayvec::ArrayVec<Piece, 32>,
+    pub white_pieces: arrayvec::ArrayVec<Piece, 16>,
+
+    /// The pieces on the board
+    pub black_pieces: arrayvec::ArrayVec<Piece, 16>,
 
     // Active color is always white for our purposes
     pub castling_rights: CastlingRights,
@@ -65,6 +70,9 @@ pub struct Position {
     /// Optimized bitboard for quick lookups of if a position is occupied by a black piece.
     pub black_map: Bitboard,
 
+    /// Optimized bitboard for quick lookups of if a position is occupied by any piece.
+    pub all_map: Bitboard,
+
     /// Quick lookup of the index of a piece in the pieces vector
     pub position_lookup: [Option<u8>; 64],
 
@@ -72,21 +80,28 @@ pub struct Position {
 }
 
 /// Given a list of pieces, returns a bitboard with the positions of the pieces for the given color.
-fn color_as_bitboard(pieces: &[Piece], color: Color) -> Bitboard {
-    pieces
-        .iter()
-        .filter(|piece| piece.color == color)
-        .fold(Bitboard::new(), |acc, piece| acc.with(piece.position))
+#[inline]
+fn to_bitboard(pieces: &[Piece]) -> Bitboard {
+    let mut bb = Bitboard::new();
+    for piece in pieces.iter() {
+        bb.set(piece.position);
+    }
+    bb
 }
 
 /// Calculates the position_lookup by iterating over the pieces and setting the
 /// index of the piece in the pieces vector at the position of the piece.
-fn calc_position_lookup(pieces: &[Piece]) -> [Option<u8>; 64] {
+fn calc_position_lookup(white_pieces: &[Piece], black_pieces: &[Piece]) -> [Option<u8>; 64] {
     let mut position_lookup = [None; 64];
 
-    for i in 0..pieces.len() {
-        let piece = &pieces[i];
+    for i in 0..white_pieces.len() {
+        let piece = &white_pieces[i];
         position_lookup[piece.position.0 as usize] = Some(i as u8);
+    }
+
+    for i in 0..black_pieces.len() {
+        let piece = &black_pieces[i];
+        position_lookup[piece.position.0 as usize] = Some((i as u8) + 16);
     }
 
     position_lookup
@@ -101,17 +116,32 @@ impl Position {
         halfmove_clock: u8,
         fullmove_number: u16,
     ) -> Position {
-        let white_map = color_as_bitboard(&pieces, Color::White);
-        let black_map = color_as_bitboard(&pieces, Color::Black);
-        let position_lookup = calc_position_lookup(&pieces);
+        let white_pieces: arrayvec::ArrayVec<Piece, 16> = pieces
+            .iter()
+            .filter(|piece| piece.color == Color::White)
+            .cloned()
+            .collect();
 
-        let white_king = pieces
+        let black_pieces: arrayvec::ArrayVec<Piece, 16> = pieces
+            .iter()
+            .filter(|piece| piece.color == Color::Black)
+            .cloned()
+            .collect();
+
+        let white_map = to_bitboard(&white_pieces);
+        let black_map = to_bitboard(&black_pieces);
+        let all_map = white_map | black_map;
+
+        let position_lookup = calc_position_lookup(&white_pieces, &black_pieces);
+
+        let white_king = white_pieces
             .iter()
             .find(|piece| piece.piece_type == PieceType::King && piece.color == Color::White)
             .cloned();
 
         Position {
-            pieces: pieces.into_iter().collect(),
+            white_pieces,
+            black_pieces,
             castling_rights,
             en_passant,
             halfmove_clock,
@@ -120,6 +150,7 @@ impl Position {
             black_map,
             position_lookup,
             white_king,
+            all_map,
         }
     }
 
@@ -132,12 +163,15 @@ impl Position {
     /// Inverts the position, i.e. makes the black pieces white and vice versa.
     /// The board will be flipped as well, i.e. a1 will become h8 and so on.
     pub fn invert(&mut self) {
-        for piece in self.pieces.iter_mut() {
-            piece.color = match piece.color {
-                Color::White => Color::Black,
-                Color::Black => Color::White,
-            };
+        mem::swap(&mut self.white_pieces, &mut self.black_pieces);
 
+        for piece in self.black_pieces.iter_mut() {
+            piece.color = Color::Black;
+            piece.position = piece.position.invert();
+        }
+
+        for piece in self.white_pieces.iter_mut() {
+            piece.color = Color::White;
             piece.position = piece.position.invert();
         }
 
@@ -147,15 +181,16 @@ impl Position {
     /// When any piece has changed, this function should be called to
     /// recalculate the bitboards and position lookup.
     pub fn calc_changes(&mut self, do_calc_position_lookup: bool) {
-        self.white_map = color_as_bitboard(&self.pieces, Color::White);
-        self.black_map = color_as_bitboard(&self.pieces, Color::Black);
+        if do_calc_position_lookup {
+            self.white_map = to_bitboard(&self.white_pieces);
+            self.black_map = to_bitboard(&self.black_pieces);
+            self.all_map = self.white_map | self.black_map;
 
-        // if do_calc_position_lookup {
-        self.position_lookup = calc_position_lookup(&self.pieces);
-        // }
+            self.position_lookup = calc_position_lookup(&self.white_pieces, &self.black_pieces);
+        }
 
         self.white_king = self
-            .pieces
+            .white_pieces
             .iter()
             .find(|piece| piece.piece_type == PieceType::King && piece.color == Color::White)
             .cloned();
@@ -169,9 +204,18 @@ impl Position {
     }
 
     /// Gets the piece at a specific position, if any.
+    #[inline(always)]
     pub fn get_piece_at(&self, position: Pos) -> Option<&Piece> {
+        if !self.all_map.get(position) {
+            return None;
+        }
+
         if let Some(index) = self.position_lookup[position.0 as usize] {
-            Some(&self.pieces[index as usize])
+            if index >= 16 {
+                return Some(&self.black_pieces[(index - 16) as usize]);
+            } else {
+                return Some(&self.white_pieces[index as usize]);
+            }
         } else {
             None
         }
@@ -180,7 +224,11 @@ impl Position {
     /// Gets the piece at a specific position, if any, mutably.
     pub fn get_piece_at_mut(&mut self, position: Pos) -> Option<&mut Piece> {
         if let Some(index) = self.position_lookup[position.0 as usize] {
-            Some(&mut self.pieces[index as usize])
+            if index >= 16 {
+                return Some(&mut self.black_pieces[(index - 16) as usize]);
+            } else {
+                return Some(&mut self.white_pieces[index as usize]);
+            }
         } else {
             None
         }
@@ -243,12 +291,6 @@ impl Position {
         Ok(())
     }
 
-    #[inline]
-    fn update_position_lookup(&mut self, from: Pos, to: Pos, piece_idx: u8) {
-        self.position_lookup[from.0 as usize] = None;
-        self.position_lookup[to.0 as usize] = Some(piece_idx);
-    }
-
     /// Moves a piece from one position to another.
     pub fn move_piece(&mut self, from: Pos, to: Pos) -> Result<(), anyhow::Error> {
         if self.white_map.get(to) || self.black_map.get(to) {
@@ -257,14 +299,32 @@ impl Position {
 
         match self.position_lookup[from.0 as usize] {
             Some(piece_idx) => {
-                self.pieces[piece_idx as usize].position = to;
-                self.update_position_lookup(from, to, piece_idx);
+                let is_black = piece_idx >= 16;
+
+                let piece = if is_black {
+                    &mut self.black_pieces[(piece_idx - 16) as usize]
+                } else {
+                    &mut self.white_pieces[piece_idx as usize]
+                };
+
+                piece.position = to;
+
+                self.position_lookup.swap(from.0 as usize, to.0 as usize);
+
+                if is_black {
+                    self.black_map.clear(from);
+                    self.black_map.set(to);
+                } else {
+                    self.white_map.clear(from);
+                    self.white_map.set(to);
+                }
+                self.all_map = self.white_map | self.black_map;
             }
             None => {
                 return Err(anyhow::anyhow!(
                     "No piece at position {}, board state:\n{}",
                     from.to_algebraic(),
-                    self.to_board_string_with_rank_file()
+                    self.to_board_string_with_rank_file(false)
                 ));
             }
         }
@@ -276,7 +336,12 @@ impl Position {
     /// Removes the piece at a specific position.
     pub fn remove_piece_at(&mut self, position: Pos) -> Result<(), anyhow::Error> {
         if let Some(index) = self.position_lookup[position.0 as usize] {
-            self.pieces.remove(index as usize);
+            if index >= 16 {
+                self.black_pieces.remove((index - 16) as usize);
+            } else {
+                self.white_pieces.remove(index as usize);
+            }
+
             self.calc_changes(true);
             Ok(())
         } else {
@@ -290,7 +355,12 @@ impl Position {
             return Err(anyhow::anyhow!("Position occupied"));
         }
 
-        self.pieces.push(piece);
+        if piece.color == Color::White {
+            self.white_pieces.push(piece);
+        } else {
+            self.black_pieces.push(piece);
+        }
+
         self.calc_changes(true);
 
         Ok(())
@@ -307,6 +377,10 @@ impl Position {
     }
 
     pub fn is_piece_at(&self, position: Pos, piece_type: &[PieceType], color: Color) -> bool {
+        if !self.all_map.get(position) {
+            return false;
+        }
+
         match self.get_piece_at(position) {
             Some(piece) => piece.color == color && piece_type.contains(&piece.piece_type),
             None => false,
@@ -322,13 +396,16 @@ impl Position {
         let possible_moves = self.get_all_moves_unchecked(game_type);
         let mut moves = Vec::with_capacity(possible_moves.len());
 
-        for mv in possible_moves.into_iter() {
-            let mut new_position = self.clone();
-            new_position.apply_move(mv)?;
+        let mut position = self.clone();
 
-            if !new_position.is_king_in_check()? {
+        for mv in possible_moves.into_iter() {
+            position.apply_move(mv)?;
+
+            if !position.is_king_in_check()? {
                 moves.push(mv);
             }
+
+            position.unapply_move(mv)?;
         }
 
         Ok(moves)
@@ -337,13 +414,9 @@ impl Position {
     /// Gets all moves that are possible by white, without checking for
     /// check, use this to check whether a king is in check, etc.
     pub fn get_all_moves_unchecked(&self, game_type: GameType) -> Vec<PieceMove> {
-        let mut moves = Vec::with_capacity(self.pieces.len() * 8);
+        let mut moves = Vec::with_capacity(self.white_pieces.len() * 8);
 
-        for piece in self.pieces.iter() {
-            if piece.color != Color::White {
-                continue;
-            }
-
+        for piece in self.white_pieces.iter() {
             let legal_moves = piece.get_legal_moves(self.white_map, self.black_map);
 
             // Don't move, must rescue or drop
@@ -484,7 +557,7 @@ impl Position {
     pub fn to_board_string(&self) -> String {
         let mut board = [[None; 8]; 8];
 
-        for piece in self.pieces.iter() {
+        for piece in self.white_pieces.iter().chain(self.black_pieces.iter()) {
             let (x, y) = piece.position.as_tuple();
             board[y as usize][x as usize] = Some(piece);
         }
@@ -509,10 +582,10 @@ impl Position {
         board_string
     }
 
-    pub fn to_board_string_with_rank_file(&self) -> String {
+    pub fn to_board_string_with_rank_file(&self, unicode: bool) -> String {
         let mut board = [[None; 8]; 8];
 
-        for piece in self.pieces.iter() {
+        for piece in self.white_pieces.iter().chain(self.black_pieces.iter()) {
             let (x, y) = piece.position.as_tuple();
             board[y as usize][x as usize] = Some(piece);
         }
@@ -526,7 +599,12 @@ impl Position {
             for file in 0..8 {
                 match board[rank][file] {
                     Some(piece) => {
-                        board_string.push_str(&piece.to_string());
+                        let piece_str = if unicode {
+                            piece.to_colored_unicode()
+                        } else {
+                            piece.to_string().white()
+                        };
+                        board_string.push_str(&piece_str);
                     }
                     None => {
                         board_string.push('.');
@@ -544,11 +622,13 @@ impl Position {
     }
 
     pub fn apply_move(&mut self, mv: PieceMove) -> Result<(), anyhow::Error> {
-        let piece = self.get_piece_at(mv.from).ok_or(anyhow::anyhow!(
-            "No piece at position {}, board state:\n{}",
-            mv.from.to_algebraic(),
-            self.to_board_string_with_rank_file()
-        ))?;
+        let piece = self.get_piece_at(mv.from).ok_or_else(|| {
+            anyhow::anyhow!(
+                "No piece at position {}, board state:\n{}",
+                mv.from.to_algebraic(),
+                self.to_board_string_with_rank_file(false)
+            )
+        })?;
 
         let legal_moves = piece.get_legal_moves(self.white_map, self.black_map);
 
@@ -561,7 +641,7 @@ impl Position {
             return Err(anyhow::anyhow!(
                 "Illegal move {}! Board state:\n{}",
                 mv.to_string(),
-                self.to_board_string_with_rank_file()
+                self.to_board_string_with_rank_file(false)
             ));
         }
 
@@ -613,7 +693,7 @@ impl Position {
             }
             MoveType::Promotion(piece_type) => {
                 self.move_piece(mv.from, mv.to)?;
-                self.get_piece_at_mut(mv.from).unwrap().piece_type = piece_type;
+                self.get_piece_at_mut(mv.to).unwrap().piece_type = piece_type;
             }
             MoveType::CapturePromotion {
                 captured: _,
@@ -629,7 +709,7 @@ impl Position {
     pub fn unapply_move(&mut self, mv: PieceMove) -> Result<(), anyhow::Error> {
         let piece = self
             .get_piece_at(mv.to)
-            .ok_or(anyhow::anyhow!("No piece at position"))?;
+            .ok_or_else(|| anyhow::anyhow!("No piece at position"))?;
 
         let color = piece.color;
 
@@ -656,7 +736,7 @@ impl Position {
             }
             MoveType::Capture(captured) => {
                 self.move_piece(mv.to, mv.from)?;
-                self.add_piece(Piece::new(captured, color, mv.to))?;
+                self.add_piece(Piece::new(captured, color.invert(), mv.to))?;
             }
             MoveType::CaptureAndRescue {
                 captured_type,
@@ -664,7 +744,7 @@ impl Position {
             } => {
                 self.drop_piece(mv.to, rescued_pos)?;
                 self.move_piece(mv.to, mv.from)?;
-                self.add_piece(Piece::new(captured_type, color, mv.to))?;
+                self.add_piece(Piece::new(captured_type, color.invert(), mv.to))?;
             }
             MoveType::CaptureAndDrop {
                 captured_type,
@@ -676,14 +756,14 @@ impl Position {
             }
             MoveType::EnPassant(pos) => {
                 self.move_piece(mv.to, mv.from)?;
-                self.add_piece(Piece::new(PieceType::Pawn, color, pos))?;
+                self.add_piece(Piece::new(PieceType::Pawn, color.invert(), pos))?;
             }
             MoveType::Castle { king: _, rook: _ } => {
                 todo!();
             }
             MoveType::Promotion(_) => {
                 self.move_piece(mv.to, mv.from)?;
-                self.get_piece_at_mut(mv.to).unwrap().piece_type = PieceType::Pawn;
+                self.get_piece_at_mut(mv.from).unwrap().piece_type = PieceType::Pawn;
             }
             MoveType::CapturePromotion {
                 captured: _,
@@ -692,8 +772,6 @@ impl Position {
                 todo!();
             }
         }
-
-        self.calc_changes(true);
 
         Ok(())
     }
@@ -717,6 +795,7 @@ impl Position {
     /// ```
     pub fn from_moves(moves: &[&str], game_type: GameType) -> Result<Position, anyhow::Error> {
         let mut position = Position::start_position();
+
         let mut is_black = false;
 
         for &mv_str in moves {
@@ -749,7 +828,11 @@ impl std::hash::Hash for Position {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         let mut board = [None; 64];
 
-        for piece in self.pieces.iter() {
+        for piece in self.white_pieces.iter() {
+            board[piece.position.0 as usize] = Some((piece.piece_type, piece.color));
+        }
+
+        for piece in self.black_pieces.iter() {
             board[piece.position.0 as usize] = Some((piece.piece_type, piece.color));
         }
 
@@ -893,7 +976,8 @@ mod tests {
         // Verify pawn moved to e4
         let expected =
             Position::parse_from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1")
-                .unwrap();
+                .unwrap()
+                .inverted();
 
         assert_eq!(position, expected);
     }
@@ -906,7 +990,8 @@ mod tests {
         let expected = Position::parse_from_fen(
             "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 1",
         )
-        .unwrap();
+        .unwrap()
+        .inverted();
 
         assert_eq!(position, expected);
     }
@@ -930,13 +1015,13 @@ mod tests {
 
         // Verify the rescue operation
         assert!(position
-            .get_piece_at(Pos::from_algebraic("e2").unwrap())
+            .get_piece_at(Pos::from_algebraic("e2").unwrap().invert())
             .unwrap()
             .holding
             .is_some());
 
         assert!(position
-            .get_piece_at(Pos::from_algebraic("f2").unwrap())
+            .get_piece_at(Pos::from_algebraic("f2").unwrap().invert())
             .is_none());
     }
 
@@ -946,5 +1031,212 @@ mod tests {
         assert!(Position::from_moves(&["e5"], GameType::Rescue).is_err()); // Pawn can't move two squares from e2
         assert!(Position::from_moves(&["d4", "d5", "Ke2"], GameType::Rescue).is_err());
         // King can't move through pawn
+    }
+
+    #[test]
+    fn test_unapply_normal_move() {
+        // Test simple pawn move
+        let mut position = Position::start_position();
+        let original = position.clone();
+
+        let mv = PieceMove::from_algebraic(&position, "e4", GameType::Rescue).unwrap();
+        position.apply_move(mv.clone()).unwrap();
+        position.unapply_move(mv).unwrap();
+
+        assert_eq!(
+            position, original,
+            "Position should be identical after applying and unapplying move"
+        );
+    }
+
+    #[test]
+    fn test_unapply_capture() {
+        // Set up a position where white can capture black's pawn
+        let mut position: Position =
+            "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1".into();
+        let original = position.clone();
+
+        let mv = PieceMove::from_algebraic(&position, "exd5", GameType::Rescue).unwrap();
+        position.apply_move(mv.clone()).unwrap();
+        position.unapply_move(mv).unwrap();
+
+        assert_eq!(
+            position, original,
+            "Position should be identical after applying and unapplying capture"
+        );
+    }
+
+    #[test]
+    fn test_unapply_rescue() {
+        // Test rescuing a piece
+        let mut position: Position = "8/8/8/8/8/8/PP6/8 w - - 0 1".into();
+        let original = position.clone();
+
+        let mv = PieceMove {
+            from: "a2".into(),
+            to: "a2".into(),
+            move_type: MoveType::NormalAndRescue("b2".into()),
+            piece_type: PieceType::Pawn,
+        };
+
+        position.apply_move(mv.clone()).unwrap();
+        position.unapply_move(mv).unwrap();
+
+        assert_eq!(
+            position, original,
+            "Position should be identical after applying and unapplying rescue"
+        );
+    }
+
+    #[test]
+    fn test_unapply_drop() {
+        // Test dropping a rescued piece
+        let mut position: Position = "8/8/8/8/8/8/PP6/8 w - - 0 1".into();
+        let original = position.clone();
+
+        // First rescue a piece
+        let rescue_mv = PieceMove {
+            from: "a2".into(),
+            to: "a2".into(),
+            move_type: MoveType::NormalAndRescue("b2".into()),
+            piece_type: PieceType::Pawn,
+        };
+        position.apply_move(rescue_mv).unwrap();
+
+        // Then drop it
+        let drop_mv = PieceMove {
+            from: "a2".into(),
+            to: "a2".into(),
+            move_type: MoveType::NormalAndDrop("a3".into()),
+            piece_type: PieceType::Pawn,
+        };
+
+        position.apply_move(drop_mv.clone()).unwrap();
+        position.unapply_move(drop_mv).unwrap();
+
+        // Unapply the rescue move to get back to original position
+        position.unapply_move(rescue_mv).unwrap();
+
+        assert_eq!(
+            position, original,
+            "Position should be identical after sequence of moves"
+        );
+    }
+
+    #[test]
+    fn test_unapply_move_and_rescue() {
+        // Test moving to a square and rescuing an adjacent piece
+        let mut position: Position = "8/8/8/8/8/8/PP6/8 w - - 0 1".into();
+        let original = position.clone();
+
+        let mv = PieceMove {
+            from: "a2".into(),
+            to: "a3".into(),
+            move_type: MoveType::NormalAndRescue("b2".into()),
+            piece_type: PieceType::Pawn,
+        };
+
+        position.apply_move(mv.clone()).unwrap();
+        position.unapply_move(mv).unwrap();
+
+        assert_eq!(
+            position, original,
+            "Position should be identical after applying and unapplying move with rescue"
+        );
+    }
+
+    #[test]
+    fn test_unapply_capture_and_rescue() {
+        // Test capturing a piece and rescuing an adjacent piece
+        let mut position: Position = "8/8/8/8/8/1p6/PP6/8 w - - 0 1".into();
+        let original = position.clone();
+
+        let mv = PieceMove {
+            from: "a2".into(),
+            to: "b3".into(),
+            move_type: MoveType::CaptureAndRescue {
+                captured_type: PieceType::Pawn,
+                rescued_pos: "b2".into(),
+            },
+            piece_type: PieceType::Pawn,
+        };
+
+        position.apply_move(mv.clone()).unwrap();
+        position.unapply_move(mv).unwrap();
+
+        assert_eq!(
+            position, original,
+            "Position should be identical after applying and unapplying capture with rescue"
+        );
+    }
+
+    #[test]
+    fn test_unapply_move_sequence() {
+        // Test a sequence of moves
+        let mut position = Position::start_position();
+        let original = position.clone();
+
+        let moves = [
+            PieceMove::from_algebraic(&position, "e4", GameType::Rescue).unwrap(),
+            PieceMove::from_algebraic(&position.inverted(), "e4", GameType::Rescue).unwrap(),
+            PieceMove::from_algebraic(&position, "Nf3", GameType::Rescue).unwrap(),
+        ];
+
+        // Apply moves
+        for mv in moves.iter() {
+            position.apply_move(mv.clone()).unwrap();
+            position.invert();
+        }
+
+        // Unapply moves in reverse
+        for mv in moves.iter().rev() {
+            position.invert();
+            position.unapply_move(mv.clone()).unwrap();
+        }
+
+        assert_eq!(
+            position, original,
+            "Position should be identical after sequence of moves"
+        );
+    }
+
+    #[test]
+    fn test_unapply_promotion() {
+        // Test pawn promotion
+        let mut position: Position = "8/P7/8/8/8/8/8/8 w - - 0 1".into();
+        let original = position.clone();
+
+        let mv = PieceMove {
+            from: "a7".into(),
+            to: "a8".into(),
+            move_type: MoveType::Promotion(PieceType::Queen),
+            piece_type: PieceType::Pawn,
+        };
+
+        position.apply_move(mv.clone()).unwrap();
+        position.unapply_move(mv).unwrap();
+
+        assert_eq!(
+            position, original,
+            "Position should be identical after applying and unapplying promotion"
+        );
+    }
+
+    #[test]
+    fn test_unapply_errors() {
+        let mut position = Position::start_position();
+
+        // Test unapplying a move with no piece at destination
+        let mv = PieceMove {
+            from: "e2".into(),
+            to: "e4".into(),
+            move_type: MoveType::Normal,
+            piece_type: PieceType::Pawn,
+        };
+
+        assert!(
+            position.unapply_move(mv.clone()).is_err(),
+            "Should error when no piece at destination"
+        );
     }
 }

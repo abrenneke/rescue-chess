@@ -112,26 +112,36 @@ fn score_move(_position: &Position, mv: &PieceMove, prev_best_move: Option<Piece
 pub fn evaluate_position(board: &Position) -> i32 {
     let mut score = 0;
 
-    for piece in board.pieces.iter() {
+    let inverted = board.inverted();
+
+    // Bonuses for white pieces
+    for piece in board.white_pieces.iter() {
         let value = piece_value(piece.piece_type);
         let piece_score = value + piece.square_bonus();
 
-        score += if piece.color == Color::White {
-            piece_score
-        } else {
-            -piece_score
-        };
+        score += piece_score;
 
         let holding_value = match piece.holding {
             Some(piece_type) => piece_value(piece_type),
             None => 0,
         };
 
-        score += if piece.color == Color::White {
-            holding_value
-        } else {
-            -holding_value
+        score += holding_value;
+    }
+
+    // Penalties for black pieces
+    for piece in inverted.white_pieces.iter() {
+        let value = piece_value(piece.piece_type);
+        let piece_score = value + piece.square_bonus();
+
+        score -= piece_score;
+
+        let holding_value = match piece.holding {
+            Some(piece_type) => piece_value(piece_type),
+            None => 0,
         };
+
+        score -= holding_value;
     }
 
     if has_bishop_pair(board, Color::White) {
@@ -141,8 +151,6 @@ pub fn evaluate_position(board: &Position) -> i32 {
     if has_bishop_pair(board, Color::Black) {
         score -= 50;
     }
-
-    let inverted = board.inverted();
 
     // Evaluate pawn structure
     let white_pawn_score = evaluate_pawn_structure(board);
@@ -166,7 +174,13 @@ fn has_bishop_pair(position: &Position, color: Color) -> bool {
     let mut light_square_bishop = false;
     let mut dark_square_bishop = false;
 
-    for piece in position.pieces.iter() {
+    let pieces = if color == Color::White {
+        &position.white_pieces
+    } else {
+        &position.black_pieces
+    };
+
+    for piece in pieces.iter() {
         if piece.color == color && piece.piece_type == PieceType::Bishop {
             if (piece.position.0 + piece.position.get_row()) % 2 == 0 {
                 light_square_bishop = true;
@@ -182,17 +196,18 @@ fn has_bishop_pair(position: &Position, color: Color) -> bool {
 fn evaluate_pawn_structure(position: &Position) -> i32 {
     let mut white_score = 0;
 
-    // Create pawn bitboards for each color
     let mut white_pawns = vec![];
     let mut black_pawns = vec![];
 
-    for piece in position.pieces.iter() {
+    for piece in position.white_pieces.iter() {
         if piece.piece_type == PieceType::Pawn {
-            if piece.color == Color::White {
-                white_pawns.push(piece.position);
-            } else {
-                black_pawns.push(piece.position);
-            }
+            white_pawns.push(piece.position);
+        }
+    }
+
+    for piece in position.black_pieces.iter() {
+        if piece.piece_type == PieceType::Pawn {
+            black_pawns.push(piece.position);
         }
     }
 
@@ -237,11 +252,7 @@ fn evaluate_pawn_structure(position: &Position) -> i32 {
 fn evaluate_king_safety(position: &Position) -> i32 {
     let mut white_score = 0;
 
-    // Find kings
-    let white_king = position
-        .pieces
-        .iter()
-        .find(|p| p.color == Color::White && p.piece_type == PieceType::King);
+    let white_king = position.white_king;
 
     if let Some(white_king) = white_king {
         // Pawn shield bonus
@@ -279,15 +290,13 @@ fn evaluate_mobility(position: &Position) -> i32 {
     let mut white_score = 0;
 
     // Calculate legal moves for each piece
-    for piece in position.pieces.iter() {
+    for piece in position.white_pieces.iter() {
         let moves = piece.get_legal_moves(position.white_map, position.black_map);
         let move_count = moves.count() as i32;
 
         let mobility_bonus = mobility_bonus(piece.piece_type) * move_count;
 
-        if piece.color == Color::White {
-            white_score += mobility_bonus;
-        }
+        white_score += mobility_bonus;
     }
 
     white_score
@@ -861,5 +870,39 @@ mod tests {
         // Pawn: 1 move * 0 points = 0
         // Total = 0
         assert_eq!(white_score, 0);
+    }
+
+    #[test]
+    fn bad_opening_knight() {
+        // Opening with the knight against the edge of the board
+        let position =
+            Position::parse_from_fen("rnbqkbnr/pppppppp/8/8/8/N7/PPPPPPPP/R1BQKBNR w KQkq - 0 1")
+                .unwrap();
+
+        let score = evaluate_position(&position);
+
+        assert!(score < 20);
+    }
+
+    #[test]
+    fn good_opening_pawn() {
+        // Opening with e4, a strong move
+        let position =
+            Position::parse_from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1")
+                .unwrap();
+
+        let score = evaluate_position(&position);
+
+        dbg!(score);
+        assert!(score > 20);
+
+        // Opening with d4, another strong move
+        let position =
+            Position::parse_from_fen("rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR w KQkq - 0 1")
+                .unwrap();
+
+        let score = evaluate_position(&position);
+
+        assert!(score > 20);
     }
 }

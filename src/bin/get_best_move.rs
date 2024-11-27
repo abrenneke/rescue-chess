@@ -23,6 +23,12 @@ struct Cli {
     #[arg(short = 'c', long)]
     pub classic: bool,
 
+    #[arg(short = 'b', long)]
+    pub black: bool,
+
+    #[arg(short = 'p', long)]
+    pub print_board: bool,
+
     pub fen: String,
 }
 
@@ -30,6 +36,7 @@ fn main() {
     let args = Cli::parse();
 
     let position = args.fen.parse::<Position>();
+
     let depth = args.depth.unwrap_or(3);
 
     let game_type = if args.classic {
@@ -40,6 +47,16 @@ fn main() {
 
     match position {
         Ok(position) => {
+            let position = if args.black {
+                position.inverted()
+            } else {
+                position
+            };
+
+            if args.print_board {
+                println!("{}", position.to_board_string_with_rank_file(true));
+            }
+
             let mut transposition_table = TranspositionTable::new();
             let mut state = SearchState::new(&mut transposition_table);
 
