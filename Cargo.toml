@@ -20,3 +20,6 @@ name = "get_best_move"
 
 [[bin]]
 name = "random_position"
+
+[profile.release]
+debug = true

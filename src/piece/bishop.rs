@@ -25,9 +25,21 @@ impl ChessPiece for Bishop {
     }
 }
 
+#[rustfmt::skip]
+const BISHOP_TABLE: [i32; 64] = [
+    -20,-10,-10,-10,-10,-10,-10,-20,
+    -10,  0,  0,  0,  0,  0,  0,-10,
+    -10,  0,  5, 10, 10,  5,  0,-10,
+    -10,  5,  5, 10, 10,  5,  5,-10,
+    -10,  0, 10, 10, 10, 10,  0,-10,
+    -10, 10, 10, 10, 10, 10, 10,-10,
+    -10,  5,  0,  0,  0,  0,  5,-10,
+    -20,-10,-10,-10,-10,-10,-10,-20,
+];
+
 impl SquareBonus for Bishop {
-    fn square_bonus(_pos: crate::Pos) -> i32 {
-        0
+    fn square_bonus(pos: crate::Pos) -> i32 {
+        BISHOP_TABLE[pos.0 as usize]
     }
 }
 
@@ -211,5 +223,14 @@ mod tests {
             .parse()
             .unwrap(),
         )
+    }
+
+    #[test]
+    fn square_bonus() {
+        let bishop = Piece::new_white(PieceType::Bishop, (3, 3).into());
+        assert_eq!(bishop.square_bonus(), 10);
+
+        let bishop = Piece::new_white(PieceType::Bishop, Pos::from_algebraic("c5").unwrap());
+        assert_eq!(bishop.square_bonus(), 10);
     }
 }

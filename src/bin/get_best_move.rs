@@ -57,6 +57,7 @@ fn main() {
                 println!("Cached positions: {}", state.cached_positions);
                 println!("Time taken: {}ms", state.start_time.elapsed().as_millis());
                 println!("Pruned: {}", state.pruned);
+                println!("Score: {}", result.score);
             }
         }
         Err(e) => {

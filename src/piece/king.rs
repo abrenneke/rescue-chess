@@ -1,6 +1,8 @@
-use crate::{bitboard::Bitboard, evaluation::square_bonus::SquareBonus, piece_move::CanMove};
+use crate::{
+    bitboard::Bitboard, evaluation::square_bonus::SquareBonus, piece_move::CanMove, Position,
+};
 
-use super::{ChessPiece, Piece, RescueChessPiece};
+use super::{ChessPiece, Color, Piece, PieceType, RescueChessPiece};
 
 pub struct King;
 
@@ -10,9 +12,21 @@ impl RescueChessPiece for King {
     }
 }
 
+#[rustfmt::skip]
+const KING_MIDDLEGAME_TABLE: [i32; 64] = [
+    -30,-40,-40,-50,-50,-40,-40,-30,
+    -30,-40,-40,-50,-50,-40,-40,-30,
+    -30,-40,-40,-50,-50,-40,-40,-30,
+    -30,-40,-40,-50,-50,-40,-40,-30,
+    -20,-30,-30,-40,-40,-30,-30,-20,
+    -10,-20,-20,-20,-20,-20,-20,-10,
+     20, 20,  0,  0,  0,  0, 20, 20,
+     20, 30, 10,  0,  0, 10, 30, 20
+];
+
 impl SquareBonus for King {
-    fn square_bonus(_pos: crate::Pos) -> i32 {
-        0
+    fn square_bonus(pos: crate::Pos) -> i32 {
+        KING_MIDDLEGAME_TABLE[pos.0 as usize]
     }
 }
 
@@ -72,6 +86,305 @@ impl CanMove for King {
         }
 
         board & !white
+    }
+}
+
+impl King {
+    pub fn is_in_check(position: &Position) -> bool {
+        let king = position.white_king;
+
+        match king {
+            Some(king) => {
+                // Pawns
+                if let Some(pos) = king.position.moved(-1, -1) {
+                    if position.is_piece_at(pos, &[PieceType::Pawn], Color::Black) {
+                        return true;
+                    }
+                }
+
+                if let Some(pos) = king.position.moved(1, -1) {
+                    if position.is_piece_at(pos, &[PieceType::Pawn], Color::Black) {
+                        return true;
+                    }
+                }
+
+                // Ranks and files
+                let mut pos = king.position;
+
+                // Up
+                while pos.can_move_up() {
+                    pos = pos.moved_unchecked(0, -1);
+
+                    if position.white_map.get(pos) {
+                        break;
+                    }
+
+                    if position.is_piece_at(pos, &[PieceType::Rook, PieceType::Queen], Color::Black)
+                    {
+                        return true;
+                    }
+
+                    if position.black_map.get(pos) {
+                        break;
+                    }
+                }
+
+                pos = king.position;
+
+                // Down
+                while pos.can_move_down() {
+                    pos = pos.moved_unchecked(0, 1);
+
+                    if position.white_map.get(pos) {
+                        break;
+                    }
+
+                    if position.is_piece_at(pos, &[PieceType::Rook, PieceType::Queen], Color::Black)
+                    {
+                        return true;
+                    }
+
+                    if position.black_map.get(pos) {
+                        break;
+                    }
+                }
+
+                pos = king.position;
+
+                // Left
+                while pos.can_move_left() {
+                    pos = pos.moved_unchecked(-1, 0);
+
+                    if position.white_map.get(pos) {
+                        break;
+                    }
+
+                    if position.is_piece_at(pos, &[PieceType::Rook, PieceType::Queen], Color::Black)
+                    {
+                        return true;
+                    }
+
+                    if position.black_map.get(pos) {
+                        break;
+                    }
+                }
+
+                pos = king.position;
+
+                // Right
+                while pos.can_move_right() {
+                    pos = pos.moved_unchecked(1, 0);
+
+                    if position.white_map.get(pos) {
+                        break;
+                    }
+
+                    if position.is_piece_at(pos, &[PieceType::Rook, PieceType::Queen], Color::Black)
+                    {
+                        return true;
+                    }
+
+                    if position.black_map.get(pos) {
+                        break;
+                    }
+                }
+
+                // Diagonals
+
+                pos = king.position;
+
+                // Up left
+                while pos.can_move_up() && pos.can_move_left() {
+                    pos = pos.moved_unchecked(-1, -1);
+
+                    if position.white_map.get(pos) {
+                        break;
+                    }
+
+                    if position.is_piece_at(
+                        pos,
+                        &[PieceType::Bishop, PieceType::Queen],
+                        Color::Black,
+                    ) {
+                        return true;
+                    }
+
+                    if position.black_map.get(pos) {
+                        break;
+                    }
+                }
+
+                pos = king.position;
+
+                // Up right
+                while pos.can_move_up() && pos.can_move_right() {
+                    pos = pos.moved_unchecked(1, -1);
+
+                    if position.white_map.get(pos) {
+                        break;
+                    }
+
+                    if position.is_piece_at(
+                        pos,
+                        &[PieceType::Bishop, PieceType::Queen],
+                        Color::Black,
+                    ) {
+                        return true;
+                    }
+
+                    if position.black_map.get(pos) {
+                        break;
+                    }
+                }
+
+                pos = king.position;
+
+                // Down right
+                while pos.can_move_down() && pos.can_move_right() {
+                    pos = pos.moved_unchecked(1, 1);
+
+                    if position.white_map.get(pos) {
+                        break;
+                    }
+
+                    if position.is_piece_at(
+                        pos,
+                        &[PieceType::Bishop, PieceType::Queen],
+                        Color::Black,
+                    ) {
+                        return true;
+                    }
+
+                    if position.black_map.get(pos) {
+                        break;
+                    }
+                }
+
+                pos = king.position;
+
+                // Down left
+                while pos.can_move_down() && pos.can_move_left() {
+                    pos = pos.moved_unchecked(-1, 1);
+
+                    if position.white_map.get(pos) {
+                        break;
+                    }
+
+                    if position.is_piece_at(
+                        pos,
+                        &[PieceType::Bishop, PieceType::Queen],
+                        Color::Black,
+                    ) {
+                        return true;
+                    }
+
+                    if position.black_map.get(pos) {
+                        break;
+                    }
+                }
+
+                // Knights
+                if let Some(pos) = king.position.moved(-1, -2) {
+                    if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
+                        return true;
+                    }
+                }
+
+                if let Some(pos) = king.position.moved(1, -2) {
+                    if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
+                        return true;
+                    }
+                }
+
+                if let Some(pos) = king.position.moved(2, -1) {
+                    if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
+                        return true;
+                    }
+                }
+
+                if let Some(pos) = king.position.moved(2, 1) {
+                    if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
+                        return true;
+                    }
+                }
+
+                if let Some(pos) = king.position.moved(1, 2) {
+                    if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
+                        return true;
+                    }
+                }
+
+                if let Some(pos) = king.position.moved(-1, 2) {
+                    if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
+                        return true;
+                    }
+                }
+
+                if let Some(pos) = king.position.moved(-2, 1) {
+                    if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
+                        return true;
+                    }
+                }
+
+                if let Some(pos) = king.position.moved(-2, -1) {
+                    if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
+                        return true;
+                    }
+                }
+
+                // Kings
+                if let Some(pos) = king.position.moved(-1, -1) {
+                    if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
+                        return true;
+                    }
+                }
+
+                if let Some(pos) = king.position.moved(0, -1) {
+                    if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
+                        return true;
+                    }
+                }
+
+                if let Some(pos) = king.position.moved(1, -1) {
+                    if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
+                        return true;
+                    }
+                }
+
+                if let Some(pos) = king.position.moved(1, 0) {
+                    if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
+                        return true;
+                    }
+                }
+
+                if let Some(pos) = king.position.moved(1, 1) {
+                    if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
+                        return true;
+                    }
+                }
+
+                if let Some(pos) = king.position.moved(0, 1) {
+                    if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
+                        return true;
+                    }
+                }
+
+                if let Some(pos) = king.position.moved(-1, 1) {
+                    if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
+                        return true;
+                    }
+                }
+
+                if let Some(pos) = king.position.moved(-1, 0) {
+                    if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
+                        return true;
+                    }
+                }
+
+                false
+            }
+            None => false,
+        }
     }
 }
 

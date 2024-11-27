@@ -61,7 +61,7 @@ pub enum Color {
     Black,
 }
 
-#[derive(PartialEq, Copy, Clone, Hash, Eq, Serialize)]
+#[derive(Debug, PartialEq, Copy, Clone, Hash, Eq, Serialize)]
 pub struct Piece {
     pub piece_type: PieceType,
     pub color: Color,
@@ -114,6 +114,17 @@ impl Piece {
         match self.color {
             Color::White => piece.yellow(),
             Color::Black => piece.cyan(),
+        }
+    }
+
+    pub fn square_bonus(&self) -> i32 {
+        match self.piece_type {
+            PieceType::Pawn => Pawn::square_bonus(self.position),
+            PieceType::Knight => Knight::square_bonus(self.position),
+            PieceType::Bishop => Bishop::square_bonus(self.position),
+            PieceType::Rook => Rook::square_bonus(self.position),
+            PieceType::Queen => Queen::square_bonus(self.position),
+            PieceType::King => King::square_bonus(self.position),
         }
     }
 }

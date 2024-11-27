@@ -25,9 +25,21 @@ impl ChessPiece for Rook {
     }
 }
 
+#[rustfmt::skip]
+const ROOK_TABLE: [i32; 64] = [
+     0,  0,  0,  0,  0,  0,  0,  0,
+     5, 10, 10, 10, 10, 10, 10,  5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+     0,  0,  0,  5,  5,  0,  0,  0
+];
+
 impl SquareBonus for Rook {
-    fn square_bonus(_pos: crate::Pos) -> i32 {
-        0
+    fn square_bonus(pos: crate::Pos) -> i32 {
+        ROOK_TABLE[pos.0 as usize]
     }
 }
 

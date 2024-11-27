@@ -26,9 +26,21 @@ impl ChessPiece for Queen {
     }
 }
 
+#[rustfmt::skip]
+const QUEEN_TABLE: [i32; 64] = [
+    -20,-10,-10, -5, -5,-10,-10,-20,
+    -10,  0,  0,  0,  0,  0,  0,-10,
+    -10,  0,  5,  5,  5,  5,  0,-10,
+    -5,   0,  5,  5,  5,  5,  0, -5,
+     0,   0,  5,  5,  5,  5,  0, -5,
+    -10,  5,  5,  5,  5,  5,  0,-10,
+    -10,  0,  5,  0,  0,  0,  0,-10,
+    -20,-10,-10, -5, -5,-10,-10,-20
+];
+
 impl SquareBonus for Queen {
-    fn square_bonus(_pos: crate::Pos) -> i32 {
-        0
+    fn square_bonus(pos: crate::Pos) -> i32 {
+        QUEEN_TABLE[pos.0 as usize]
     }
 }
 

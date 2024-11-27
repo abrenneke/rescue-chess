@@ -4,7 +4,7 @@ use std::hash::Hash;
 
 use crate::{
     bitboard::Bitboard,
-    piece::{Color, PieceType},
+    piece::{Color, King, PieceType},
     piece_move::{GameType, MoveType, PieceMove},
     pos::Pos,
 };
@@ -27,6 +27,17 @@ pub struct CastlingRights {
 
     /// Can black castle queenside
     pub black_queen_side: bool,
+}
+
+impl Default for CastlingRights {
+    fn default() -> Self {
+        CastlingRights {
+            white_king_side: true,
+            white_queen_side: true,
+            black_king_side: true,
+            black_queen_side: true,
+        }
+    }
 }
 
 /// A game position in chess. Contains all state to represent a single position
@@ -56,6 +67,8 @@ pub struct Position {
 
     /// Quick lookup of the index of a piece in the pieces vector
     pub position_lookup: [Option<u8>; 64],
+
+    pub white_king: Option<Piece>,
 }
 
 /// Given a list of pieces, returns a bitboard with the positions of the pieces for the given color.
@@ -90,6 +103,11 @@ impl Position {
         let black_map = color_as_bitboard(&pieces, Color::Black);
         let position_lookup = calc_position_lookup(&pieces);
 
+        let white_king = pieces
+            .iter()
+            .find(|piece| piece.piece_type == PieceType::King && piece.color == Color::White)
+            .cloned();
+
         Position {
             pieces: pieces.into_iter().collect(),
             castling_rights,
@@ -99,6 +117,7 @@ impl Position {
             white_map,
             black_map,
             position_lookup,
+            white_king,
         }
     }
 
@@ -129,6 +148,11 @@ impl Position {
         self.white_map = color_as_bitboard(&self.pieces, Color::White);
         self.black_map = color_as_bitboard(&self.pieces, Color::Black);
         self.position_lookup = calc_position_lookup(&self.pieces);
+        self.white_king = self
+            .pieces
+            .iter()
+            .find(|piece| piece.piece_type == PieceType::King && piece.color == Color::White)
+            .cloned();
     }
 
     /// Returns a new GamePosition with the colors and board flipped.
@@ -250,35 +274,18 @@ impl Position {
 
     /// Returns true if white is in checkmate. Returns an error if the position is invalid (no king)
     pub fn is_checkmate(&self, game_type: GameType) -> Result<bool, anyhow::Error> {
-        Ok(self.is_king_in_check(game_type)? && self.get_all_legal_moves(game_type)?.is_empty())
+        Ok(self.is_king_in_check()? && self.get_all_legal_moves(game_type)?.is_empty())
     }
 
     /// Returns true if the white king is currently in check. Returns an error if there is no king.
-    pub fn is_king_in_check(&self, game_type: GameType) -> Result<bool, anyhow::Error> {
-        // TODO probably more efficient to check from the king position
-        let king = self
-            .pieces
-            .iter()
-            .find(|piece| piece.piece_type == PieceType::King && piece.color == Color::White);
+    pub fn is_king_in_check(&self) -> Result<bool, anyhow::Error> {
+        Ok(King::is_in_check(self))
+    }
 
-        match king {
-            Some(king) => {
-                let king_position = king.position;
-
-                let black_moves = self.inverted().get_all_moves_unchecked(game_type);
-
-                for mv in black_moves {
-                    if mv.to.invert() == king_position {
-                        return Ok(true);
-                    }
-                }
-
-                Ok(false)
-            }
-            None => Err(anyhow::anyhow!(
-                "No white king found! \n {}",
-                self.to_board_string()
-            )),
+    pub fn is_piece_at(&self, position: Pos, piece_type: &[PieceType], color: Color) -> bool {
+        match self.get_piece_at(position) {
+            Some(piece) => piece.color == color && piece_type.contains(&piece.piece_type),
+            None => false,
         }
     }
 
@@ -295,7 +302,7 @@ impl Position {
             let mut new_position = self.clone();
             new_position.apply_move(mv)?;
 
-            if !new_position.is_king_in_check(game_type)? {
+            if !new_position.is_king_in_check()? {
                 moves.push(mv);
             }
         }
@@ -308,7 +315,11 @@ impl Position {
     pub fn get_all_moves_unchecked(&self, game_type: GameType) -> Vec<PieceMove> {
         let mut moves = Vec::with_capacity(self.pieces.len() * 8);
 
-        for piece in self.pieces.iter().filter(|p| p.color == Color::White) {
+        for piece in self.pieces.iter() {
+            if piece.color != Color::White {
+                continue;
+            }
+
             let legal_moves = piece.get_legal_moves(self.white_map, self.black_map);
 
             // Don't move, must rescue or drop
@@ -760,31 +771,31 @@ mod tests {
     #[test]
     pub fn king_not_in_check() {
         let position: Position = "8/8/8/8/8/8/8/4K3 w - - 0 1".into();
-        assert!(!position.is_king_in_check(GameType::Rescue).unwrap());
+        assert!(!position.is_king_in_check().unwrap());
 
         let position: Position = "1N3r2/4P3/2pP3p/2P2P2/3K1k2/2p1p3/3BBq2/2R5 w - - 0 1".into();
-        assert!(!position.is_king_in_check(GameType::Rescue).unwrap());
+        assert!(!position.is_king_in_check().unwrap());
 
         let position: Position = "8/nR2Q2P/P2P2kb/4B2b/4K3/1r2P2P/5p2/1r6 w - - 0 1".into();
-        assert!(!position.is_king_in_check(GameType::Rescue).unwrap());
+        assert!(!position.is_king_in_check().unwrap());
 
         let position: Position = "4B1r1/7q/rk4pP/4n3/1Np5/1p1P1R2/P1Q2K2/8 w - - 0 1".into();
-        assert!(!position.is_king_in_check(GameType::Rescue).unwrap());
+        assert!(!position.is_king_in_check().unwrap());
     }
 
     #[test]
     fn king_in_check() {
         let position: Position = "rnb1kbnr/pppppppp/3q4/8/3K4/8/PPPPPPPP/RNBQ1BNR w - - 0 1".into();
-        assert!(position.is_king_in_check(GameType::Rescue).unwrap());
+        assert!(position.is_king_in_check().unwrap());
 
         let position: Position = "rnbqk1nr/pppppppp/5b2/8/3K4/8/PPPPPPPP/RNBQ1BNR".into();
-        assert!(position.is_king_in_check(GameType::Rescue).unwrap());
+        assert!(position.is_king_in_check().unwrap());
 
         let position: Position = "rnbqkb1r/pppppppp/4n3/8/3K4/8/PPPPPPPP/RNBQ1BNR".into();
-        assert!(position.is_king_in_check(GameType::Rescue).unwrap());
+        assert!(position.is_king_in_check().unwrap());
 
         let position: Position = "rnbqkbnr/pppp1ppp/8/4p3/3K4/8/PPPPPPPP/RNBQ1BNR".into();
-        assert!(position.is_king_in_check(GameType::Rescue).unwrap());
+        assert!(position.is_king_in_check().unwrap());
     }
 
     #[test]

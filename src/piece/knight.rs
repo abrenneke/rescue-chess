@@ -25,9 +25,21 @@ impl ChessPiece for Knight {
     }
 }
 
+#[rustfmt::skip]
+const KNIGHT_TABLE: [i32; 64] = [
+    -50,-40,-30,-30,-30,-30,-40,-50,
+    -40,-20,  0,  0,  0,  0,-20,-40,
+    -30,  0, 10, 15, 15, 10,  0,-30,
+    -30,  5, 15, 20, 20, 15,  5,-30,
+    -30,  0, 15, 20, 20, 15,  0,-30,
+    -30,  5, 10, 15, 15, 10,  5,-30,
+    -40,-20,  0,  5,  5,  0,-20,-40,
+    -50,-40,-30,-30,-30,-30,-40,-50,
+];
+
 impl SquareBonus for Knight {
     fn square_bonus(_pos: crate::Pos) -> i32 {
-        0
+        KNIGHT_TABLE[_pos.0 as usize]
     }
 }
 
