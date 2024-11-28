@@ -1,13 +1,5 @@
 use clap::Parser;
-use rescue_chess::{
-    piece_move::GameType,
-    search::{
-        alpha_beta::{self, SearchParams},
-        search_results::SearchState,
-        transposition_table::TranspositionTable,
-    },
-    Position,
-};
+use rescue_chess::{piece_move::GameType, search::game_state::GameState, Color, Position};
 use std::{thread, time::Duration};
 
 #[derive(Parser)]
@@ -40,36 +32,33 @@ fn main() {
         GameType::Rescue
     };
 
-    let mut position = match args.starting_fen {
+    let position = match args.starting_fen {
         Some(fen) => fen.parse::<Position>().expect("Invalid FEN string"),
         None => Position::start_position(),
     };
 
-    // Create separate transposition tables for each player
-    let mut transposition_table = TranspositionTable::new();
-
-    let mut move_number = 1;
-    let mut is_blacks_turn = false;
+    let mut game_state = GameState::from_position(position);
+    game_state.debug_logs_1 = true;
 
     println!("\nStarting position:");
-    println!("{}", position.to_board_string_with_rank_file(args.unicode));
+    println!(
+        "{}",
+        game_state
+            .current_position
+            .to_board_string_with_rank_file(args.unicode)
+    );
 
-    while !position.is_checkmate(game_type).unwrap() {
-        let mut state = SearchState::new(&mut transposition_table);
-
-        let params = SearchParams {
-            depth: args.depth,
-            game_type,
-            ..Default::default()
-        };
+    while !game_state.current_position.is_checkmate(game_type).unwrap() {
+        let mut is_blacks_turn = game_state.current_turn == Color::Black;
 
         println!(
             "\nMove {}: {} to play",
-            move_number,
+            game_state.move_number,
             if is_blacks_turn { "Black" } else { "White" }
         );
 
-        let result = alpha_beta::search(&position, &mut state, params);
+        let (result, stats) = game_state.search_and_apply().unwrap();
+        is_blacks_turn = !is_blacks_turn;
 
         if let Some(best_move) = result.best_move {
             println!("Best move: {}", best_move);
@@ -81,40 +70,33 @@ fn main() {
                     result.score
                 }
             );
-            println!("Nodes searched: {}", state.nodes_searched);
-            println!("Time taken: {}", state.start_time.elapsed().as_millis());
-            println!("Cache hits: {}", state.cached_positions);
-            println!("Pruned: {}", state.pruned);
-
-            position.apply_move(best_move.clone()).unwrap();
+            println!("Nodes searched: {}", stats.nodes_searched);
+            println!("Time taken: {}", stats.time_taken_ms);
+            println!("Cache hits: {}", stats.cached_positions);
+            println!("Pruned: {}", stats.pruned);
 
             println!("\nPosition after {}:", best_move);
             println!(
                 "{}",
                 if is_blacks_turn {
-                    position
+                    game_state
+                        .current_position
                         .inverted()
                         .to_board_string_with_rank_file(args.unicode)
                 } else {
-                    position.to_board_string_with_rank_file(args.unicode)
+                    game_state
+                        .current_position
+                        .to_board_string_with_rank_file(args.unicode)
                 }
             );
             println!(
                 "{}",
                 if is_blacks_turn {
-                    position.inverted().to_fen()
+                    game_state.current_position.inverted().to_fen()
                 } else {
-                    position.to_fen()
+                    game_state.current_position.to_fen()
                 }
             );
-
-            // Invert the position for the next player
-            position.invert();
-            is_blacks_turn = !is_blacks_turn;
-
-            if !is_blacks_turn {
-                move_number += 1;
-            }
         } else {
             println!("No legal moves available!");
             break;
@@ -129,12 +111,15 @@ fn main() {
     println!("Final position:");
     println!(
         "{}",
-        if is_blacks_turn {
-            position
+        if game_state.current_turn == Color::Black {
+            game_state
+                .current_position
                 .inverted()
                 .to_board_string_with_rank_file(args.unicode)
         } else {
-            position.to_board_string_with_rank_file(args.unicode)
+            game_state
+                .current_position
+                .to_board_string_with_rank_file(args.unicode)
         }
     );
 }

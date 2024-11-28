@@ -26,6 +26,25 @@ pub struct SearchState<'table> {
     pub start_time: Instant,
     pub time_limit: u128,
     pub pruned: u32,
+    pub best_move_so_far: Option<PieceMove>,
+}
+
+pub struct SearchStats {
+    pub nodes_searched: u32,
+    pub cached_positions: u32,
+    pub pruned: u32,
+    pub time_taken_ms: u128,
+}
+
+impl<'a> SearchState<'a> {
+    pub fn to_stats(&self) -> SearchStats {
+        SearchStats {
+            nodes_searched: self.nodes_searched,
+            cached_positions: self.cached_positions,
+            pruned: self.pruned,
+            time_taken_ms: self.start_time.elapsed().as_millis(),
+        }
+    }
 }
 
 impl<'a> SearchState<'a> {
@@ -38,6 +57,7 @@ impl<'a> SearchState<'a> {
             rng: rand::thread_rng(),
             time_limit: u128::MAX,
             pruned: 0,
+            best_move_so_far: None,
         }
     }
 }

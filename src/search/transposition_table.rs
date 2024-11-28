@@ -63,15 +63,17 @@ impl TranspositionTable {
         self.table.clear();
     }
 
-    pub fn principal_variation_list(&self, position: &Position) -> Vec<PieceMove> {
+    pub fn principal_variation_list(&self, position: &Position, mut depth: u32) -> Vec<PieceMove> {
         let mut moves = Vec::new();
         let mut current_position = position.clone();
 
-        while let Some(entry) = self.table.get(&current_position) {
+        while let Some(entry) = self.try_get(&current_position, depth) {
             moves.push(entry.principal_variation);
             current_position
                 .apply_move(entry.principal_variation)
                 .unwrap();
+
+            depth -= 1;
         }
 
         moves

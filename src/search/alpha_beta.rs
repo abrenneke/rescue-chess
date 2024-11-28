@@ -1,10 +1,6 @@
 use std::i32;
 
-use crate::{
-    evaluation::{evaluate_position, order_moves},
-    piece_move::GameType,
-    PieceMove, Position,
-};
+use crate::{evaluation::order_moves, piece_move::GameType, PieceMove, Position};
 
 use super::{
     quiescence_search::quiescence_search,
@@ -24,8 +20,13 @@ pub struct SearchParams {
     pub quiescence_depth: u32,
     pub time_limit: u128,
     pub game_type: GameType,
+
+    pub debug_print: bool,
     pub debug_print_verbose: bool,
     pub debug_print_all_moves: bool,
+
+    pub previous_score: Option<i32>,
+    pub window_size: i32,
 }
 
 impl Default for SearchParams {
@@ -36,8 +37,11 @@ impl Default for SearchParams {
             quiescence_depth: 4,
             time_limit: u128::MAX,
             game_type: GameType::Classic,
+            debug_print: false,
             debug_print_verbose: false,
             debug_print_all_moves: false,
+            previous_score: None,
+            window_size: 50,
         }
     }
 }
@@ -59,39 +63,61 @@ pub enum Error {
 }
 
 pub fn search(position: &Position, state: &mut SearchState, params: SearchParams) -> SearchResults {
-    let result = alpha_beta(
-        position,
-        -params.initial_bound,
-        params.initial_bound,
-        params.depth,
-        state,
-        &params,
-        true,
-    );
+    let mut alpha = match params.previous_score {
+        Some(score) => score - params.window_size,
+        None => -params.window_size,
+    };
 
-    let time_taken_ms = state.start_time.elapsed().as_millis();
+    let mut beta = match params.previous_score {
+        Some(score) => score + params.window_size,
+        None => params.window_size,
+    };
 
-    match result {
-        Ok(result) => {
-            let principal_variation = result.principal_variation.unwrap();
-            let best_move = principal_variation.first().cloned();
+    loop {
+        alpha = alpha.max(-params.initial_bound);
+        beta = beta.min(params.initial_bound);
 
-            if params.debug_print_all_moves {
-                // debug_print_all_moves(position, &params, state);
+        match alpha_beta(position, alpha, beta, params.depth, state, &params, true) {
+            Ok(result) => {
+                if let Some(pv) = result.principal_variation {
+                    if !pv.is_empty() {
+                        // Score within window - we're done!
+                        let time_taken_ms = state.start_time.elapsed().as_millis();
+                        let best_move = pv.first().cloned();
+
+                        return SearchResults {
+                            best_move,
+                            principal_variation: pv,
+                            score: result.score,
+                            nodes_searched: state.nodes_searched,
+                            cached_positions: state.cached_positions,
+                            depth: params.depth,
+                            time_taken_ms,
+                            pruned: state.pruned,
+                        };
+                    }
+                }
             }
-
-            SearchResults {
-                best_move,
-                principal_variation,
-                score: result.score,
-                nodes_searched: state.nodes_searched,
-                cached_positions: state.cached_positions,
-                depth: params.depth,
-                time_taken_ms,
-                pruned: state.pruned,
-            }
+            Err(Error::Timeout) => panic!("Search timed out"),
         }
-        Err(_) => panic!("Search timed out"),
+
+        if params.debug_print {
+            println!(
+                "Window search failed: alpha={}, beta={}, widening window",
+                alpha, beta
+            );
+        }
+
+        // If we get here, the score was outside our window
+        // Double the window size and try again
+        alpha -= params.window_size;
+        beta += params.window_size;
+
+        // If window gets too big, just use full bounds
+        if beta - alpha >= params.initial_bound * 2 {
+            alpha = -params.initial_bound;
+            beta = params.initial_bound;
+        }
     }
 }
 
@@ -126,13 +152,17 @@ pub fn alpha_beta(
 ) -> Result<SearchResult, Error> {
     // If we have already searched this position to the same depth or greater,
     // we can use the cached result directly.
-    // if let Some(entry) = state.transposition_table.try_get(position, depth) {
-    //     state.cached_positions += 1;
-    //     return Ok(SearchResult {
-    //         principal_variation: Some(state.transposition_table.principal_variation_list(position)),
-    //         score: entry.score,
-    //     });
-    // }
+    if let Some(entry) = state.transposition_table.try_get(position, depth) {
+        state.cached_positions += 1;
+        return Ok(SearchResult {
+            principal_variation: Some(
+                state
+                    .transposition_table
+                    .principal_variation_list(position, depth),
+            ),
+            score: entry.score,
+        });
+    }
 
     // If we have exceeded the time limit, we should return an error.
     if state.start_time.elapsed().as_millis() >= state.time_limit {
@@ -141,6 +171,10 @@ pub fn alpha_beta(
 
     // Increment the total number of nodes searched.
     state.nodes_searched += 1;
+
+    if state.nodes_searched % 1000000 == 0 {
+        println!("Nodes searched: {}", state.nodes_searched);
+    }
 
     // If we have reached the maximum depth, we should evaluate the position
     // and return the result.

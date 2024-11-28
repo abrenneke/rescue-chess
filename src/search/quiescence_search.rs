@@ -1,7 +1,7 @@
 use crate::{
     evaluation::{evaluate_position, piece_value},
     piece_move::MoveType,
-    PieceMove, Position,
+    Position,
 };
 
 use super::{
