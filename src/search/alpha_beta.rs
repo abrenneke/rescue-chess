@@ -5,7 +5,7 @@ use crate::{evaluation::order_moves, piece_move::GameType, PieceMove, Position};
 use super::{
     quiescence_search::quiescence_search,
     search_results::{SearchResults, SearchState},
-    transposition_table::TranspositionTableEntry,
+    transposition_table::{NodeType, TranspositionTableEntry},
 };
 
 #[derive(Clone)]
@@ -150,9 +150,14 @@ pub fn alpha_beta(
     params: &SearchParams,
     is_white: bool,
 ) -> Result<SearchResult, Error> {
+    let original_alpha = alpha;
+
     // If we have already searched this position to the same depth or greater,
     // we can use the cached result directly.
-    if let Some(entry) = state.transposition_table.try_get(position, depth) {
+    if let Some(entry) = state
+        .transposition_table
+        .try_get(position, depth, alpha, beta)
+    {
         state.cached_positions += 1;
         return Ok(SearchResult {
             principal_variation: Some(
@@ -220,8 +225,8 @@ pub fn alpha_beta(
 
     let prev_best_move = state
         .transposition_table
-        .try_get(position, depth)
-        .map(|entry| entry.principal_variation);
+        .try_get(position, depth, alpha, beta)
+        .and_then(|entry| entry.principal_variation);
 
     let ordered_moves = order_moves(position, moves, prev_best_move);
 
@@ -235,7 +240,7 @@ pub fn alpha_beta(
     };
 
     for mv in ordered_moves {
-        if let Some(result) = test_move(mv, position, &mut iteration, params) {
+        if let Some(result) = test_move(mv, position, &mut iteration, params, depth) {
             return result;
         }
     }
@@ -249,14 +254,25 @@ pub fn alpha_beta(
     }
 
     let principal_variation = iteration.principal_variation;
+    let score = iteration.alpha;
+
+    // Determine node type based on search result
+    let node_type = if score <= original_alpha {
+        NodeType::UpperBound
+    } else if score >= beta {
+        NodeType::LowerBound
+    } else {
+        NodeType::Exact
+    };
 
     if let Some(principal_variation) = &principal_variation {
         iteration.state.transposition_table.insert(
             position.clone(),
             TranspositionTableEntry {
                 depth,
-                score: iteration.alpha,
-                principal_variation: principal_variation.first().cloned().unwrap(),
+                score,
+                principal_variation: principal_variation.first().cloned(),
+                node_type,
             },
         );
     }
@@ -272,6 +288,7 @@ fn test_move(
     position: &Position,
     iteration: &mut SearchIteration,
     params: &SearchParams,
+    depth: u32,
 ) -> Option<Result<SearchResult, Error>> {
     if params.debug_print_verbose {
         println!(
@@ -315,6 +332,16 @@ fn test_move(
             // If the score is greater than or equal to beta, we can prune the search.
             if score >= iteration.beta {
                 iteration.state.pruned += 1;
+
+                iteration.state.transposition_table.insert(
+                    position.clone(),
+                    TranspositionTableEntry {
+                        depth,
+                        score: iteration.beta,
+                        principal_variation: Some(mv),
+                        node_type: NodeType::LowerBound,
+                    },
+                );
 
                 if params.debug_print_verbose {
                     println!(

@@ -15,7 +15,15 @@ pub struct TranspositionTable {
 pub struct TranspositionTableEntry {
     pub score: i32,
     pub depth: u32,
-    pub principal_variation: PieceMove,
+    pub principal_variation: Option<PieceMove>,
+    pub node_type: NodeType,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Copy)]
+pub enum NodeType {
+    Exact,
+    LowerBound,
+    UpperBound,
 }
 
 impl TranspositionTable {
@@ -34,14 +42,27 @@ impl TranspositionTable {
     /// Tries to get the score of a position from the table. If the depth of the
     /// stored score is greater than or equal to the given depth, the score is
     /// returned. Otherwise, `None` is returned.
-    pub fn try_get(&self, position: &Position, depth: u32) -> Option<&TranspositionTableEntry> {
+    pub fn try_get(
+        &self,
+        position: &Position,
+        depth: u32,
+        alpha: i32,
+        beta: i32,
+    ) -> Option<&TranspositionTableEntry> {
         if let Some(entry) = self.table.get(&position) {
             if entry.depth >= depth {
-                return Some(entry);
+                match entry.node_type {
+                    NodeType::Exact => Some(entry),
+                    NodeType::LowerBound if entry.score >= beta => Some(entry),
+                    NodeType::UpperBound if entry.score <= alpha => Some(entry),
+                    _ => None,
+                }
+            } else {
+                None
             }
+        } else {
+            None
         }
-
-        None
     }
 
     /// Inserts a position into the table with the given score and depth.
@@ -67,13 +88,21 @@ impl TranspositionTable {
         let mut moves = Vec::new();
         let mut current_position = position.clone();
 
-        while let Some(entry) = self.try_get(&current_position, depth) {
-            moves.push(entry.principal_variation);
-            current_position
-                .apply_move(entry.principal_variation)
-                .unwrap();
-
-            depth -= 1;
+        while depth > 0 {
+            // Only follow exact nodes for PV
+            if let Some(entry) = self.table.get(&current_position) {
+                if entry.depth >= depth && entry.node_type == NodeType::Exact {
+                    if let Some(mv) = entry.principal_variation {
+                        moves.push(mv);
+                        current_position.apply_move(mv).unwrap();
+                        depth -= 1;
+                    }
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
         }
 
         moves
