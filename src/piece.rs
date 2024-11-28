@@ -1,4 +1,4 @@
-use crate::{evaluation::square_bonus::SquareBonus, piece_move::CanMove, Bitboard, Pos};
+use crate::{evaluation::square_bonus::SquareBonus, piece_move::CanMove, Bitboard, Pos, Position};
 
 pub mod bishop;
 pub mod king;
@@ -95,14 +95,14 @@ impl Piece {
         }
     }
 
-    pub fn get_legal_moves(&self, white: Bitboard, black: Bitboard) -> Bitboard {
+    pub fn get_legal_moves(&self, position: &Position) -> Bitboard {
         match self.piece_type {
-            PieceType::Pawn => Pawn::get_legal_moves(self, white, black),
-            PieceType::Knight => Knight::get_legal_moves(self, white, black),
-            PieceType::Bishop => Bishop::get_legal_moves(self, white, black),
-            PieceType::Rook => Rook::get_legal_moves(self, white, black),
-            PieceType::Queen => Queen::get_legal_moves(self, white, black),
-            PieceType::King => King::get_legal_moves(self, white, black),
+            PieceType::Pawn => Pawn::get_legal_moves(self, position),
+            PieceType::Knight => Knight::get_legal_moves(self, position),
+            PieceType::Bishop => Bishop::get_legal_moves(self, position),
+            PieceType::Rook => Rook::get_legal_moves(self, position),
+            PieceType::Queen => Queen::get_legal_moves(self, position),
+            PieceType::King => King::get_legal_moves(self, position),
         }
     }
 

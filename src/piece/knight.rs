@@ -1,5 +1,6 @@
 use crate::{
     bitboard::Bitboard, evaluation::square_bonus::SquareBonus, piece::Piece, piece_move::CanMove,
+    Position,
 };
 
 use super::{ChessPiece, PieceType, RescueChessPiece};
@@ -44,9 +45,11 @@ impl SquareBonus for Knight {
 }
 
 impl CanMove for Knight {
-    fn get_legal_moves(piece: &Piece, white: Bitboard, _black: Bitboard) -> Bitboard {
+    fn get_legal_moves(piece: &Piece, position: &Position) -> Bitboard {
         let mut board = Bitboard::new();
         let pos = piece.position;
+
+        let white = position.white_map;
 
         // Up left
         if let Some(pos) = pos.moved(-1, -2) {
@@ -94,13 +97,19 @@ impl CanMove for Knight {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Piece, PieceType};
+    use crate::{Piece, PieceType, Position};
 
     #[test]
     pub fn move_empty_spaces() {
         let knight = Piece::new_white(PieceType::Knight, (4, 4).into());
 
-        let legal_moves = knight.get_legal_moves(Default::default(), Default::default());
+        let position = Position {
+            white_map: Default::default(),
+            black_map: Default::default(),
+            ..Default::default()
+        };
+
+        let legal_moves = knight.get_legal_moves(&position);
 
         assert_eq!(
             legal_moves,
@@ -123,7 +132,13 @@ mod tests {
     pub fn move_wall() {
         let knight = Piece::new_white(PieceType::Knight, (0, 0).into());
 
-        let legal_moves = knight.get_legal_moves(Default::default(), Default::default());
+        let position = Position {
+            white_map: Default::default(),
+            black_map: Default::default(),
+            ..Default::default()
+        };
+
+        let legal_moves = knight.get_legal_moves(&position);
 
         assert_eq!(
             legal_moves,

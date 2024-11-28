@@ -58,18 +58,13 @@ fn main() {
         );
 
         let (result, stats) = game_state.search_and_apply().unwrap();
-        is_blacks_turn = !is_blacks_turn;
 
         if let Some(best_move) = result.best_move {
             println!("Best move: {}", best_move);
-            println!(
-                "Score: {}",
-                if is_blacks_turn {
-                    -result.score
-                } else {
-                    result.score
-                }
-            );
+            println!("Score: {}", result.score);
+
+            is_blacks_turn = !is_blacks_turn;
+
             println!("Nodes searched: {}", stats.nodes_searched);
             println!("Time taken: {}", stats.time_taken_ms);
             println!("Cache hits: {}", stats.cached_positions);

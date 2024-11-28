@@ -291,7 +291,7 @@ fn evaluate_mobility(position: &Position) -> i32 {
 
     // Calculate legal moves for each piece
     for piece in position.white_pieces.iter() {
-        let moves = piece.get_legal_moves(position.white_map, position.black_map);
+        let moves = piece.get_legal_moves(position);
         let move_count = moves.count() as i32;
 
         let mobility_bonus = mobility_bonus(piece.piece_type) * move_count;

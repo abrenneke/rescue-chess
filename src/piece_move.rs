@@ -6,7 +6,7 @@ use crate::{Bitboard, Piece, PieceType, Pos, Position};
 mod parser;
 
 pub trait CanMove {
-    fn get_legal_moves(piece: &Piece, white: Bitboard, black: Bitboard) -> Bitboard;
+    fn get_legal_moves(piece: &Piece, position: &Position) -> Bitboard;
 }
 
 /// A move that a chess piece can make.
@@ -278,6 +278,16 @@ impl PieceMove {
 /// Displays the move in algebraic notation.
 impl std::fmt::Display for PieceMove {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let MoveType::Castle { king: _, rook } = self.move_type {
+            if rook.get_col() == 0 {
+                write!(f, "O-O-O")?;
+            } else {
+                write!(f, "O-O")?;
+            }
+
+            return Ok(());
+        }
+
         write!(
             f,
             "{}",

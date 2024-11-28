@@ -294,7 +294,11 @@ impl Position {
     /// Moves a piece from one position to another.
     pub fn move_piece(&mut self, from: Pos, to: Pos) -> Result<(), anyhow::Error> {
         if self.white_map.get(to) || self.black_map.get(to) {
-            return Err(anyhow::anyhow!("Position occupied"));
+            return Err(anyhow::anyhow!(
+                "Position occupied {}, board state:\n{}",
+                to.to_algebraic(),
+                self.to_board_string_with_rank_file(false)
+            ));
         }
 
         match self.position_lookup[from.0 as usize] {
@@ -417,7 +421,7 @@ impl Position {
         let mut moves = Vec::with_capacity(self.white_pieces.len() * 8);
 
         for piece in self.white_pieces.iter() {
-            let legal_moves = piece.get_legal_moves(self.white_map, self.black_map);
+            let legal_moves = piece.get_legal_moves(self);
 
             // Don't move, must rescue or drop
             if game_type == GameType::Rescue {
@@ -467,12 +471,40 @@ impl Position {
                         piece_type: piece.piece_type,
                     });
                 } else {
-                    moves.push(PieceMove {
-                        from: piece.position,
-                        to,
-                        move_type: MoveType::Normal,
-                        piece_type: piece.piece_type,
-                    });
+                    if piece.piece_type == PieceType::King
+                        && piece.position == Pos::xy(4, 7)
+                        && to == Pos::xy(6, 7)
+                    {
+                        moves.push(PieceMove {
+                            from: piece.position,
+                            to,
+                            move_type: MoveType::Castle {
+                                king: Pos::xy(4, 7),
+                                rook: Pos::xy(7, 7),
+                            },
+                            piece_type: piece.piece_type,
+                        });
+                    } else if piece.piece_type == PieceType::King
+                        && piece.position == Pos::xy(4, 7)
+                        && to == Pos::xy(2, 7)
+                    {
+                        moves.push(PieceMove {
+                            from: piece.position,
+                            to,
+                            move_type: MoveType::Castle {
+                                king: Pos::xy(4, 7),
+                                rook: Pos::xy(0, 7),
+                            },
+                            piece_type: piece.piece_type,
+                        });
+                    } else {
+                        moves.push(PieceMove {
+                            from: piece.position,
+                            to,
+                            move_type: MoveType::Normal,
+                            piece_type: piece.piece_type,
+                        });
+                    }
                 }
 
                 if game_type == GameType::Rescue {
@@ -630,7 +662,7 @@ impl Position {
             )
         })?;
 
-        let legal_moves = piece.get_legal_moves(self.white_map, self.black_map);
+        let legal_moves = piece.get_legal_moves(self);
 
         let is_rescue_or_drop = match mv.move_type {
             MoveType::NormalAndRescue(_) | MoveType::NormalAndDrop(_) => true,
@@ -639,9 +671,15 @@ impl Position {
 
         if !legal_moves.get(mv.to) && !is_rescue_or_drop {
             return Err(anyhow::anyhow!(
-                "Illegal move {}! Board state:\n{}",
+                "Illegal move {}! Board state:\n{}\n{}, legal moves: {}",
                 mv.to_string(),
-                self.to_board_string_with_rank_file(false)
+                self.to_fen(),
+                self.to_board_string_with_rank_file(false),
+                legal_moves
+                    .iter()
+                    .map(|pos| pos.to_algebraic())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ));
         }
 
@@ -689,7 +727,12 @@ impl Position {
                 self.move_piece(mv.from, mv.to)?;
             }
             MoveType::Castle { king: _, rook: _ } => {
-                todo!();
+                self.move_piece(mv.from, mv.to)?;
+                if mv.to == Pos::xy(6, 7) {
+                    self.move_piece(Pos::xy(7, 7), Pos::xy(5, 7))?;
+                } else {
+                    self.move_piece(Pos::xy(0, 7), Pos::xy(3, 7))?;
+                }
             }
             MoveType::Promotion(piece_type) => {
                 self.move_piece(mv.from, mv.to)?;
@@ -703,7 +746,33 @@ impl Position {
             }
         }
 
+        self.try_remove_castling_rights(mv);
+
         Ok(())
+    }
+
+    fn try_remove_castling_rights(&mut self, mv: PieceMove) {
+        // If a rook moved from a corner, remove, if a king moved from its start position, remove both
+        if mv.piece_type == PieceType::Rook && mv.from == Pos::from_algebraic("a1").unwrap() {
+            self.castling_rights.white_queen_side = false;
+        } else if mv.piece_type == PieceType::Rook && mv.from == Pos::from_algebraic("h1").unwrap()
+        {
+            self.castling_rights.white_king_side = false;
+        } else if mv.piece_type == PieceType::King && mv.from == Pos::from_algebraic("e1").unwrap()
+        {
+            self.castling_rights.white_king_side = false;
+            self.castling_rights.white_queen_side = false;
+        } else if mv.piece_type == PieceType::Rook && mv.from == Pos::from_algebraic("a8").unwrap()
+        {
+            self.castling_rights.black_queen_side = false;
+        } else if mv.piece_type == PieceType::Rook && mv.from == Pos::from_algebraic("h8").unwrap()
+        {
+            self.castling_rights.black_king_side = false;
+        } else if mv.piece_type == PieceType::King && mv.from == Pos::from_algebraic("e8").unwrap()
+        {
+            self.castling_rights.black_king_side = false;
+            self.castling_rights.black_queen_side = false;
+        }
     }
 
     pub fn unapply_move(&mut self, mv: PieceMove) -> Result<(), anyhow::Error> {
@@ -759,7 +828,12 @@ impl Position {
                 self.add_piece(Piece::new(PieceType::Pawn, color.invert(), pos))?;
             }
             MoveType::Castle { king: _, rook: _ } => {
-                todo!();
+                self.move_piece(mv.to, mv.from)?;
+                if mv.to == Pos::xy(6, 7) {
+                    self.move_piece(Pos::xy(5, 7), Pos::xy(7, 7))?;
+                } else {
+                    self.move_piece(Pos::xy(3, 7), Pos::xy(0, 7))?;
+                }
             }
             MoveType::Promotion(_) => {
                 self.move_piece(mv.to, mv.from)?;
@@ -773,7 +847,33 @@ impl Position {
             }
         }
 
+        self.try_readd_castling_rights(mv);
+
         Ok(())
+    }
+
+    fn try_readd_castling_rights(&mut self, mv: PieceMove) {
+        // If a rook moved from a corner, remove, if a king moved from its start position, remove both
+        if mv.piece_type == PieceType::Rook && mv.from == Pos::from_algebraic("a1").unwrap() {
+            self.castling_rights.white_queen_side = true;
+        } else if mv.piece_type == PieceType::Rook && mv.from == Pos::from_algebraic("h1").unwrap()
+        {
+            self.castling_rights.white_king_side = true;
+        } else if mv.piece_type == PieceType::King && mv.from == Pos::from_algebraic("e1").unwrap()
+        {
+            self.castling_rights.white_king_side = true;
+            self.castling_rights.white_queen_side = true;
+        } else if mv.piece_type == PieceType::Rook && mv.from == Pos::from_algebraic("a8").unwrap()
+        {
+            self.castling_rights.black_queen_side = true;
+        } else if mv.piece_type == PieceType::Rook && mv.from == Pos::from_algebraic("h8").unwrap()
+        {
+            self.castling_rights.black_king_side = true;
+        } else if mv.piece_type == PieceType::King && mv.from == Pos::from_algebraic("e8").unwrap()
+        {
+            self.castling_rights.black_king_side = true;
+            self.castling_rights.black_queen_side = true;
+        }
     }
 
     pub fn parse_from_fen(fen: &str) -> Result<Position, anyhow::Error> {
@@ -853,6 +953,12 @@ impl std::str::FromStr for Position {
 impl std::convert::From<&'static str> for Position {
     fn from(s: &'static str) -> Self {
         Position::parse_from_fen(s).unwrap()
+    }
+}
+
+impl Default for Position {
+    fn default() -> Self {
+        Position::start_position()
     }
 }
 

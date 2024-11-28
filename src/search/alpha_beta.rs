@@ -27,12 +27,14 @@ pub struct SearchParams {
 
     pub previous_score: Option<i32>,
     pub window_size: i32,
+
+    pub move_number: usize,
 }
 
 impl Default for SearchParams {
     fn default() -> Self {
         Self {
-            initial_bound: 1000000,
+            initial_bound: 2000000,
             depth: 3,
             quiescence_depth: 4,
             time_limit: u128::MAX,
@@ -42,6 +44,7 @@ impl Default for SearchParams {
             debug_print_all_moves: false,
             previous_score: None,
             window_size: 50,
+            move_number: 0,
         }
     }
 }
@@ -72,6 +75,8 @@ pub fn search(position: &Position, state: &mut SearchState, params: SearchParams
         Some(score) => score + params.window_size,
         None => params.window_size,
     };
+
+    let mut failures = 0;
 
     loop {
         alpha = alpha.max(-params.initial_bound);
@@ -108,13 +113,20 @@ pub fn search(position: &Position, state: &mut SearchState, params: SearchParams
             );
         }
 
+        failures += 1;
+
         // If we get here, the score was outside our window
         // Double the window size and try again
-        alpha -= params.window_size;
-        beta += params.window_size;
+        alpha -= params.window_size * failures;
+        beta += params.window_size * failures;
 
         // If window gets too big, just use full bounds
         if beta - alpha >= params.initial_bound * 2 {
+            alpha = -params.initial_bound;
+            beta = params.initial_bound;
+        }
+
+        if failures > 10 {
             alpha = -params.initial_bound;
             beta = params.initial_bound;
         }
@@ -139,6 +151,14 @@ impl<'a, 'b> std::fmt::Debug for SearchIteration<'a, 'b> {
             .field("principal_variation", &self.principal_variation)
             .finish()
     }
+}
+
+// Late move reduction
+fn should_reduce_move(mv: &PieceMove, depth: u32, move_number: usize, in_check: bool) -> bool {
+    depth >= 3 && // Only reduce at deeper depths
+    move_number >= 4 && // Don't reduce first few moves
+    !mv.is_capture() && // Don't reduce captures
+    !in_check // Don't reduce when in check
 }
 
 pub fn alpha_beta(
@@ -283,6 +303,7 @@ pub fn alpha_beta(
     });
 }
 
+// Modify the test_move function to implement LMR
 fn test_move(
     mv: PieceMove,
     position: &Position,
@@ -305,103 +326,105 @@ fn test_move(
         );
     }
 
-    // Apply the move to a clone of the position, then
-    // switch to the other player's perspective.
+    // Apply the move to a clone of the position
     let mut child = position.clone();
     child.apply_move(mv).unwrap();
+    let in_check = child.is_king_in_check().unwrap();
 
     child.invert();
 
-    // Depth-first search the child position.
-    let result = alpha_beta(
-        &child,
-        -iteration.beta,
-        -iteration.alpha,
-        iteration.depth - 1,
-        iteration.state,
-        params,
-        !iteration.is_white,
-    );
+    // Implement Late Move Reduction
+    let mut score = if should_reduce_move(&mv, depth, params.move_number, in_check) {
+        // Calculate reduction depth - can be tuned
+        let reduction = if params.move_number > 6 { 2 } else { 1 };
 
-    match result {
-        Err(e) => Some(Err(e)),
-        Ok(result) => {
-            // Negate the score to switch back to the original player's perspective.
-            let score = -result.score;
+        // Reduced depth search
+        let result = alpha_beta(
+            &child,
+            -iteration.alpha - 1, // Use a null window for reduced search
+            -iteration.alpha,
+            iteration.depth - 1 - reduction,
+            iteration.state,
+            params,
+            !iteration.is_white,
+        );
 
-            // If the score is greater than or equal to beta, we can prune the search.
-            if score >= iteration.beta {
-                iteration.state.pruned += 1;
-
-                iteration.state.transposition_table.insert(
-                    position.clone(),
-                    TranspositionTableEntry {
-                        depth,
-                        score: iteration.beta,
-                        principal_variation: Some(mv),
-                        node_type: NodeType::LowerBound,
-                    },
-                );
-
-                if params.debug_print_verbose {
-                    println!(
-                        "{}Pruned move: {} (score: {})",
-                        "\t".repeat((params.depth - iteration.depth) as usize),
-                        if iteration.is_white {
-                            mv
-                        } else {
-                            mv.inverted()
-                        },
-                        score
-                    );
-                }
-
-                return Some(Ok(SearchResult {
-                    principal_variation: None,
-                    score: iteration.beta,
-                }));
-            }
-
-            // If the score is greater than alpha, we have found a new best move.
-            if score > iteration.alpha {
-                if params.debug_print_verbose {
-                    println!(
-                        "{}New best move: {} (score: {})",
-                        "\t".repeat((params.depth - iteration.depth) as usize),
-                        if iteration.is_white {
-                            mv
-                        } else {
-                            mv.inverted()
-                        },
-                        score
-                    );
-                }
-
-                iteration.alpha = score;
-
-                let mut principal_variation =
-                    result.principal_variation.clone().unwrap_or_default();
-                principal_variation.insert(0, mv);
-
-                iteration.principal_variation = Some(principal_variation);
-            } else {
-                if params.debug_print_verbose {
-                    println!(
-                        "{}Move: {} (score: {})",
-                        "\t".repeat((params.depth - iteration.depth) as usize),
-                        if iteration.is_white {
-                            mv
-                        } else {
-                            mv.inverted()
-                        },
-                        score
-                    );
+        match result {
+            Ok(reduced_result) => {
+                let reduced_score = -reduced_result.score;
+                // If the reduced search beats alpha, we need to do a full-depth search
+                if reduced_score > iteration.alpha {
+                    None // Signal that we need a full-depth search
+                } else {
+                    Some(reduced_score)
                 }
             }
+            Err(e) => return Some(Err(e)),
+        }
+    } else {
+        None
+    };
 
-            None
+    // If LMR was not done or the reduced search beat alpha, do a full-depth search
+    if score.is_none() {
+        match alpha_beta(
+            &child,
+            -iteration.beta,
+            -iteration.alpha,
+            iteration.depth - 1,
+            iteration.state,
+            params,
+            !iteration.is_white,
+        ) {
+            Ok(result) => {
+                score = Some(-result.score);
+            }
+            Err(e) => return Some(Err(e)),
         }
     }
+
+    let score = score.unwrap();
+
+    // Rest of the move processing remains the same
+    if score >= iteration.beta {
+        iteration.state.pruned += 1;
+
+        iteration.state.transposition_table.insert(
+            position.clone(),
+            TranspositionTableEntry {
+                depth,
+                score: iteration.beta,
+                principal_variation: Some(mv),
+                node_type: NodeType::LowerBound,
+            },
+        );
+
+        return Some(Ok(SearchResult {
+            principal_variation: None,
+            score: iteration.beta,
+        }));
+    }
+
+    if score > iteration.alpha {
+        iteration.alpha = score;
+        let mut principal_variation = vec![mv];
+        if let Ok(result) = alpha_beta(
+            &child,
+            -iteration.beta,
+            -iteration.alpha,
+            iteration.depth - 1,
+            iteration.state,
+            params,
+            !iteration.is_white,
+        ) {
+            if let Some(mut child_pv) = result.principal_variation {
+                principal_variation.append(&mut child_pv);
+            }
+        }
+        iteration.principal_variation = Some(principal_variation);
+    }
+
+    None
 }
 
 #[cfg(test)]

@@ -1,5 +1,6 @@
 use crate::{
     bitboard::Bitboard, evaluation::square_bonus::SquareBonus, piece::Piece, piece_move::CanMove,
+    Position,
 };
 
 use super::{ChessPiece, PieceType, RescueChessPiece};
@@ -44,9 +45,12 @@ impl SquareBonus for Pawn {
 }
 
 impl CanMove for Pawn {
-    fn get_legal_moves(piece: &Piece, white: Bitboard, black: Bitboard) -> Bitboard {
+    fn get_legal_moves(piece: &Piece, position: &Position) -> Bitboard {
         let mut board = Bitboard::new();
         let pos = piece.position;
+
+        let white = position.white_map;
+        let black = position.black_map;
 
         if !pos.can_move_up() {
             return board;
@@ -91,7 +95,7 @@ mod tests {
     #[test]
     pub fn move_from_starting_position() {
         let pawn = Piece::new_white(PieceType::Pawn, (4, 6).into());
-        let legal_moves = Pawn::get_legal_moves(&pawn, Default::default(), Default::default());
+        let legal_moves = Pawn::get_legal_moves(&pawn, &Default::default());
         assert_eq!(
             legal_moves,
             r#"
@@ -126,7 +130,13 @@ mod tests {
         .parse()
         .unwrap();
 
-        let legal_moves = Pawn::get_legal_moves(&pawn, white, Default::default());
+        let position = Position {
+            white_map: white,
+            black_map: Default::default(),
+            ..Default::default()
+        };
+
+        let legal_moves = Pawn::get_legal_moves(&pawn, &position);
         assert_eq!(
             legal_moves,
             r#"
@@ -161,7 +171,13 @@ mod tests {
         .parse()
         .unwrap();
 
-        let legal_moves = Pawn::get_legal_moves(&pawn, Default::default(), black);
+        let position = Position {
+            white_map: Default::default(),
+            black_map: black,
+            ..Default::default()
+        };
+
+        let legal_moves = Pawn::get_legal_moves(&pawn, &position);
         assert_eq!(
             legal_moves,
             r#"
@@ -196,7 +212,13 @@ mod tests {
         .parse()
         .unwrap();
 
-        let legal_moves = Pawn::get_legal_moves(&pawn, white, Default::default());
+        let position = Position {
+            white_map: white,
+            black_map: Default::default(),
+            ..Default::default()
+        };
+
+        let legal_moves = Pawn::get_legal_moves(&pawn, &position);
         assert_eq!(
             legal_moves,
             r#"
@@ -231,7 +253,13 @@ mod tests {
         .parse()
         .unwrap();
 
-        let legal_moves = Pawn::get_legal_moves(&pawn, Default::default(), black);
+        let position = Position {
+            white_map: Default::default(),
+            black_map: black,
+            ..Default::default()
+        };
+
+        let legal_moves = Pawn::get_legal_moves(&pawn, &position);
         assert_eq!(
             legal_moves,
             r#"
@@ -252,7 +280,14 @@ mod tests {
     #[test]
     pub fn cannot_double_move_not_starting_position() {
         let pawn = Piece::new_white(PieceType::Pawn, (4, 5).into());
-        let legal_moves = Pawn::get_legal_moves(&pawn, Default::default(), Default::default());
+
+        let position = Position {
+            white_map: Default::default(),
+            black_map: Default::default(),
+            ..Default::default()
+        };
+
+        let legal_moves = Pawn::get_legal_moves(&pawn, &position);
         assert_eq!(
             legal_moves,
             r#"

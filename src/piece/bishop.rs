@@ -1,5 +1,6 @@
 use crate::{
     bitboard::Bitboard, evaluation::square_bonus::SquareBonus, piece::Piece, piece_move::CanMove,
+    Position,
 };
 
 use super::{ChessPiece, PieceType, RescueChessPiece};
@@ -44,9 +45,12 @@ impl SquareBonus for Bishop {
 }
 
 impl CanMove for Bishop {
-    fn get_legal_moves(piece: &Piece, white: Bitboard, black: Bitboard) -> Bitboard {
+    fn get_legal_moves(piece: &Piece, position: &Position) -> Bitboard {
         let mut board = Bitboard::new();
         let mut pos = piece.position;
+
+        let white = position.white_map;
+        let black = position.black_map;
 
         // Down Left
         while pos.can_move_down() && pos.can_move_left() {
@@ -109,12 +113,20 @@ mod tests {
         bitboard::Bitboard,
         piece::{Piece, PieceType},
         pos::Pos,
+        Position,
     };
 
     #[test]
     fn test_get_legal_moves_empty_1() {
         let bishop = Piece::new_white(PieceType::Bishop, (4, 4).into());
-        let legal_moves = bishop.get_legal_moves(0.into(), 0.into());
+
+        let position = Position {
+            white_map: Default::default(),
+            black_map: Default::default(),
+            ..Default::default()
+        };
+
+        let legal_moves = bishop.get_legal_moves(&position);
 
         assert_eq!(
             legal_moves,
@@ -136,7 +148,14 @@ mod tests {
     #[test]
     fn test_get_legal_moves_empty_2() {
         let bishop = Piece::new_white(PieceType::Bishop, Pos::top_left());
-        let legal_moves = bishop.get_legal_moves(0.into(), 0.into());
+
+        let position = Position {
+            white_map: Default::default(),
+            black_map: Default::default(),
+            ..Default::default()
+        };
+
+        let legal_moves = bishop.get_legal_moves(&position);
 
         assert_eq!(
             legal_moves,
@@ -171,7 +190,13 @@ mod tests {
         .parse()
         .unwrap();
 
-        let legal_moves = bishop.get_legal_moves(white, Default::default());
+        let position = Position {
+            white_map: white,
+            black_map: Default::default(),
+            ..Default::default()
+        };
+
+        let legal_moves = bishop.get_legal_moves(&position);
 
         assert_eq!(
             legal_moves,
@@ -206,7 +231,13 @@ mod tests {
         .parse()
         .unwrap();
 
-        let legal_moves = bishop.get_legal_moves(Default::default(), black);
+        let position = Position {
+            white_map: Default::default(),
+            black_map: black,
+            ..Default::default()
+        };
+
+        let legal_moves = bishop.get_legal_moves(&position);
 
         assert_eq!(
             legal_moves,

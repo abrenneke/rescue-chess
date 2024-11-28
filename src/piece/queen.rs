@@ -1,5 +1,6 @@
 use crate::evaluation::square_bonus::SquareBonus;
 use crate::piece_move::CanMove;
+use crate::Position;
 use crate::{bitboard::Bitboard, piece::Piece};
 
 use super::{Bishop, PieceType, Rook};
@@ -45,7 +46,7 @@ impl SquareBonus for Queen {
 }
 
 impl CanMove for Queen {
-    fn get_legal_moves(piece: &Piece, white: Bitboard, black: Bitboard) -> Bitboard {
-        Bishop::get_legal_moves(piece, white, black) | Rook::get_legal_moves(piece, white, black)
+    fn get_legal_moves(piece: &Piece, position: &Position) -> Bitboard {
+        Bishop::get_legal_moves(piece, position) | Rook::get_legal_moves(piece, position)
     }
 }

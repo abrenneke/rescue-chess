@@ -1,5 +1,6 @@
 use crate::{
     bitboard::Bitboard, evaluation::square_bonus::SquareBonus, piece::Piece, piece_move::CanMove,
+    Position,
 };
 
 use super::{ChessPiece, PieceType, RescueChessPiece};
@@ -44,8 +45,10 @@ impl SquareBonus for Rook {
 }
 
 impl CanMove for Rook {
-    fn get_legal_moves(piece: &Piece, white: Bitboard, black: Bitboard) -> Bitboard {
+    fn get_legal_moves(piece: &Piece, position: &Position) -> Bitboard {
         let mut board = Bitboard::new();
+        let white = position.white_map;
+        let black = position.black_map;
 
         // Up
         let mut position = piece.position;
@@ -104,13 +107,19 @@ impl CanMove for Rook {
 }
 #[cfg(test)]
 mod tests {
-    use crate::{Bitboard, Piece, PieceType};
+    use crate::{Bitboard, Piece, PieceType, Position};
 
     #[test]
     fn legal_moves() {
         let piece = Piece::new_white(PieceType::Rook, (4, 4).into());
 
-        let legal_moves = piece.get_legal_moves(Default::default(), Default::default());
+        let position = Position {
+            white_map: Default::default(),
+            black_map: Default::default(),
+            ..Default::default()
+        };
+
+        let legal_moves = piece.get_legal_moves(&position);
 
         assert_eq!(
             legal_moves,
@@ -146,7 +155,13 @@ mod tests {
         .parse()
         .unwrap();
 
-        let legal_moves = piece.get_legal_moves(white, Default::default());
+        let position = Position {
+            white_map: white,
+            black_map: Default::default(),
+            ..Default::default()
+        };
+
+        let legal_moves = piece.get_legal_moves(&position);
 
         assert_eq!(
             legal_moves,
@@ -182,7 +197,13 @@ mod tests {
         .parse()
         .unwrap();
 
-        let legal_moves = piece.get_legal_moves(Default::default(), black);
+        let position = Position {
+            white_map: Default::default(),
+            black_map: black,
+            ..Default::default()
+        };
+
+        let legal_moves = piece.get_legal_moves(&position);
 
         assert_eq!(
             legal_moves,

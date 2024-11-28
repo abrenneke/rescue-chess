@@ -1,5 +1,5 @@
 use crate::{
-    bitboard::Bitboard, evaluation::square_bonus::SquareBonus, piece_move::CanMove, Position,
+    bitboard::Bitboard, evaluation::square_bonus::SquareBonus, piece_move::CanMove, Pos, Position,
 };
 
 use super::{ChessPiece, Color, Piece, PieceType, RescueChessPiece};
@@ -41,9 +41,11 @@ impl ChessPiece for King {
 }
 
 impl CanMove for King {
-    fn get_legal_moves(piece: &Piece, white: Bitboard, _black: Bitboard) -> Bitboard {
+    fn get_legal_moves(piece: &Piece, position: &Position) -> Bitboard {
         let mut board = Bitboard::new();
         let pos = piece.position;
+
+        let all = position.all_map;
 
         // Up left
         if pos.can_move_left() && pos.can_move_up() {
@@ -85,7 +87,47 @@ impl CanMove for King {
             board.set(pos.moved_unchecked(-1, 0));
         }
 
-        board & !white
+        if piece.color == Color::White {
+            if position.castling_rights.white_queen_side {
+                if !all.get(Pos::from_algebraic("d1").unwrap())
+                    && !all.get(Pos::from_algebraic("c1").unwrap())
+                    && !all.get(Pos::from_algebraic("b1").unwrap())
+                    && !King::is_in_check(&position)
+                {
+                    board.set(Pos::from_algebraic("c1").unwrap());
+                }
+            }
+
+            if position.castling_rights.white_king_side {
+                if !all.get(Pos::from_algebraic("f1").unwrap())
+                    && !all.get(Pos::from_algebraic("g1").unwrap())
+                    && !King::is_in_check(&position)
+                {
+                    board.set(Pos::from_algebraic("g1").unwrap());
+                }
+            }
+        } else {
+            if position.castling_rights.black_queen_side {
+                if !all.get(Pos::from_algebraic("d8").unwrap())
+                    && !all.get(Pos::from_algebraic("c8").unwrap())
+                    && !all.get(Pos::from_algebraic("b8").unwrap())
+                    && !King::is_in_check(&position)
+                {
+                    board.set(Pos::from_algebraic("c8").unwrap());
+                }
+            }
+
+            if position.castling_rights.black_king_side {
+                if !all.get(Pos::from_algebraic("f8").unwrap())
+                    && !all.get(Pos::from_algebraic("g8").unwrap())
+                    && !King::is_in_check(&position)
+                {
+                    board.set(Pos::from_algebraic("g8").unwrap());
+                }
+            }
+        }
+
+        board & !position.white_map
     }
 }
 
@@ -390,13 +432,19 @@ impl King {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Piece, PieceType};
+    use crate::{Piece, PieceType, Position};
 
     #[test]
     pub fn move_king_empty_spaces() {
         let king = Piece::new_white(PieceType::King, (4, 4).into());
 
-        let legal_moves = king.get_legal_moves(Default::default(), Default::default());
+        let position = Position {
+            white_map: Default::default(),
+            black_map: Default::default(),
+            ..Default::default()
+        };
+
+        let legal_moves = king.get_legal_moves(&position);
 
         assert_eq!(
             legal_moves,
@@ -413,5 +461,118 @@ mod tests {
             .parse()
             .unwrap()
         );
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use crate::{position::CastlingRights, Bitboard, Piece, PieceType, Pos, Position};
+
+        #[test]
+        fn test_white_kingside_castling() {
+            // Setup initial position with king and rook in starting positions
+            let king = Piece::new_white(PieceType::King, Pos::from_algebraic("e1").unwrap());
+            let position = Position {
+                white_king: Some(king.clone()),
+                castling_rights: CastlingRights {
+                    white_king_side: true,
+                    white_queen_side: false,
+                    black_king_side: false,
+                    black_queen_side: false,
+                },
+                white_map: Default::default(),
+                black_map: Default::default(),
+                ..Default::default()
+            };
+
+            let legal_moves = king.get_legal_moves(&position);
+
+            // Verify that g1 (kingside castle square) is a legal move
+            assert!(legal_moves.get(Pos::from_algebraic("g1").unwrap()));
+        }
+
+        #[test]
+        fn test_white_kingside_castling_blocked() {
+            // Setup position with piece blocking castling
+            let king = Piece::new_white(PieceType::King, Pos::from_algebraic("e1").unwrap());
+            let mut white_map: Bitboard = Default::default();
+            white_map.set(Pos::from_algebraic("f1").unwrap()); // Place blocking piece
+
+            let position = Position {
+                white_king: Some(king.clone()),
+                castling_rights: CastlingRights {
+                    white_king_side: true,
+                    white_queen_side: false,
+                    black_king_side: false,
+                    black_queen_side: false,
+                },
+                white_map,
+                black_map: Default::default(),
+                ..Default::default()
+            };
+
+            let legal_moves = king.get_legal_moves(&position);
+
+            // Verify that g1 is not a legal move when blocked
+            assert!(!legal_moves.get(Pos::from_algebraic("g1").unwrap()));
+        }
+
+        #[test]
+        fn test_white_queenside_castling() {
+            let king = Piece::new_white(PieceType::King, Pos::from_algebraic("e1").unwrap());
+            let position = Position {
+                white_king: Some(king.clone()),
+                castling_rights: CastlingRights {
+                    white_king_side: false,
+                    white_queen_side: true,
+                    black_king_side: false,
+                    black_queen_side: false,
+                },
+                white_map: Default::default(),
+                black_map: Default::default(),
+                ..Default::default()
+            };
+
+            let legal_moves = king.get_legal_moves(&position);
+
+            // Verify that c1 (queenside castle square) is a legal move
+            assert!(legal_moves.get(Pos::from_algebraic("c1").unwrap()));
+        }
+
+        #[test]
+        fn test_castling_rights_disabled() {
+            let king = Piece::new_white(PieceType::King, Pos::from_algebraic("e1").unwrap());
+            let position = Position {
+                white_king: Some(king.clone()),
+                castling_rights: CastlingRights {
+                    white_king_side: false,
+                    white_queen_side: false,
+                    black_king_side: false,
+                    black_queen_side: false,
+                },
+                white_map: Default::default(),
+                black_map: Default::default(),
+                ..Default::default()
+            };
+
+            let legal_moves = king.get_legal_moves(&position);
+
+            // Verify neither castling move is legal when rights are disabled
+            assert!(!legal_moves.get(Pos::from_algebraic("g1").unwrap()));
+            assert!(!legal_moves.get(Pos::from_algebraic("c1").unwrap()));
+        }
+    }
+
+    #[test]
+    fn castle_through_bishop() {
+        let position = Position::parse_from_fen(
+            "r2qkbnr/ppp1pppp/2n5/3p2B1/3PP3/2N5/PPP2PPP/R2bKBNR w KQkq - 0 1",
+        )
+        .unwrap();
+
+        let king = position.white_king.unwrap();
+
+        let legal_moves = king.get_legal_moves(&position);
+
+        println!("{}", legal_moves);
     }
 }
