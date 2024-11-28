@@ -497,6 +497,22 @@ impl Position {
                             },
                             piece_type: piece.piece_type,
                         });
+                    } else if piece.piece_type == PieceType::Pawn && to.is_row(0) {
+                        for promoted_to in [
+                            PieceType::Queen,
+                            PieceType::Rook,
+                            PieceType::Bishop,
+                            PieceType::Knight,
+                        ]
+                        .iter()
+                        {
+                            moves.push(PieceMove {
+                                from: piece.position,
+                                to,
+                                move_type: MoveType::Promotion(*promoted_to),
+                                piece_type: piece.piece_type,
+                            });
+                        }
                     } else {
                         moves.push(PieceMove {
                             from: piece.position,

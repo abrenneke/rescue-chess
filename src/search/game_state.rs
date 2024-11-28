@@ -120,7 +120,6 @@ impl GameState {
             game_type: self.game_type,
             previous_score: self.previous_score(self.current_turn),
             debug_print: true,
-            move_number: self.move_number,
             ..Default::default()
         };
 

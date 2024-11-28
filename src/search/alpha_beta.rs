@@ -1,5 +1,3 @@
-use std::i32;
-
 use crate::{evaluation::order_moves, piece_move::GameType, PieceMove, Position};
 
 use super::{
@@ -27,8 +25,6 @@ pub struct SearchParams {
 
     pub previous_score: Option<i32>,
     pub window_size: i32,
-
-    pub move_number: usize,
 }
 
 impl Default for SearchParams {
@@ -44,7 +40,6 @@ impl Default for SearchParams {
             debug_print_all_moves: false,
             previous_score: None,
             window_size: 50,
-            move_number: 0,
         }
     }
 }
@@ -79,6 +74,23 @@ pub fn search(position: &Position, state: &mut SearchState, params: SearchParams
     let mut failures = 0;
 
     loop {
+        if position
+            .get_all_legal_moves(params.game_type)
+            .unwrap()
+            .is_empty()
+        {
+            return SearchResults {
+                best_move: None,
+                principal_variation: None,
+                score: -i32::MAX,
+                nodes_searched: state.nodes_searched,
+                cached_positions: state.cached_positions,
+                depth: params.depth,
+                time_taken_ms: state.start_time.elapsed().as_millis(),
+                pruned: state.pruned,
+            };
+        }
+
         alpha = alpha.max(-params.initial_bound);
         beta = beta.min(params.initial_bound);
 
@@ -92,7 +104,7 @@ pub fn search(position: &Position, state: &mut SearchState, params: SearchParams
 
                         return SearchResults {
                             best_move,
-                            principal_variation: pv,
+                            principal_variation: Some(pv),
                             score: result.score,
                             nodes_searched: state.nodes_searched,
                             cached_positions: state.cached_positions,
@@ -130,6 +142,10 @@ pub fn search(position: &Position, state: &mut SearchState, params: SearchParams
             alpha = -params.initial_bound;
             beta = params.initial_bound;
         }
+
+        if failures > 11 {
+            panic!("Failed to find a score within window after 10 tries");
+        }
     }
 }
 
@@ -154,9 +170,9 @@ impl<'a, 'b> std::fmt::Debug for SearchIteration<'a, 'b> {
 }
 
 // Late move reduction
-fn should_reduce_move(mv: &PieceMove, depth: u32, move_number: usize, in_check: bool) -> bool {
+fn should_reduce_move(mv: &PieceMove, depth: u32, move_index: usize, in_check: bool) -> bool {
     depth >= 3 && // Only reduce at deeper depths
-    move_number >= 4 && // Don't reduce first few moves
+    move_index >= 4 && // Don't reduce first few moves
     !mv.is_capture() && // Don't reduce captures
     !in_check // Don't reduce when in check
 }
@@ -201,6 +217,25 @@ pub fn alpha_beta(
         println!("Nodes searched: {}", state.nodes_searched);
     }
 
+    // If the position is a checkmate, we should return a very low score.
+    // This is just to prevent the engine from continuing past a king capture.
+    if position.is_checkmate(params.game_type).unwrap() {
+        let score = -1000000;
+
+        if params.debug_print_verbose {
+            println!(
+                "{}Checkmate found: {}",
+                "\t".repeat((params.depth - depth) as usize),
+                score
+            );
+        }
+
+        return Ok(SearchResult {
+            principal_variation: Some(vec![]),
+            score,
+        });
+    }
+
     // If we have reached the maximum depth, we should evaluate the position
     // and return the result.
     if depth == 0 {
@@ -215,25 +250,6 @@ pub fn alpha_beta(
             params.depth,
         )?
         .score;
-
-        return Ok(SearchResult {
-            principal_variation: Some(vec![]),
-            score,
-        });
-    }
-
-    // If the position is a checkmate, we should return a very low score.
-    // This is just to prevent the engine from continuing past a king capture.
-    if position.is_checkmate(params.game_type).unwrap() {
-        let score = -1000000;
-
-        if params.debug_print_verbose {
-            println!(
-                "{}Checkmate found: {}",
-                "\t".repeat((params.depth - depth) as usize),
-                score
-            );
-        }
 
         return Ok(SearchResult {
             principal_variation: Some(vec![]),
@@ -259,8 +275,8 @@ pub fn alpha_beta(
         is_white,
     };
 
-    for mv in ordered_moves {
-        if let Some(result) = test_move(mv, position, &mut iteration, params, depth) {
+    for (move_index, mv) in ordered_moves.iter().enumerate() {
+        if let Some(result) = test_move(*mv, position, &mut iteration, params, depth, move_index) {
             return result;
         }
     }
@@ -310,6 +326,7 @@ fn test_move(
     iteration: &mut SearchIteration,
     params: &SearchParams,
     depth: u32,
+    move_index: usize,
 ) -> Option<Result<SearchResult, Error>> {
     if params.debug_print_verbose {
         println!(
@@ -334,9 +351,9 @@ fn test_move(
     child.invert();
 
     // Implement Late Move Reduction
-    let mut score = if should_reduce_move(&mv, depth, params.move_number, in_check) {
+    let mut score = if should_reduce_move(&mv, depth, move_index, in_check) {
         // Calculate reduction depth - can be tuned
-        let reduction = if params.move_number > 6 { 2 } else { 1 };
+        let reduction = if move_index > 6 { 2 } else { 1 };
 
         // Reduced depth search
         let result = alpha_beta(
@@ -459,6 +476,7 @@ pub mod tests {
             "{}",
             result
                 .principal_variation
+                .unwrap()
                 .iter()
                 .map(|mv| mv.to_string())
                 .collect::<Vec<String>>()
@@ -542,6 +560,7 @@ pub mod tests {
                 "Principal variation: {}",
                 result
                     .principal_variation
+                    .unwrap()
                     .iter()
                     .map(|mv| mv.to_string())
                     .collect::<Vec<String>>()
@@ -592,6 +611,7 @@ pub mod tests {
                 "Principal variation: {}",
                 result
                     .principal_variation
+                    .unwrap()
                     .iter()
                     .map(|mv| mv.to_string())
                     .collect::<Vec<String>>()
