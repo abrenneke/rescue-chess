@@ -24,5 +24,8 @@ name = "random_position"
 [[bin]]
 name = "self_play"
 
+[[bin]]
+name = "uci"
+
 [profile.release]
 debug = true

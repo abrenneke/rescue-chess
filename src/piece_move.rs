@@ -1,7 +1,7 @@
 use parser::RescueOrDrop;
 use serde::{Deserialize, Serialize};
 
-use crate::{Bitboard, Piece, PieceType, Pos, Position};
+use crate::{Bitboard, Color, Piece, PieceType, Pos, Position};
 
 mod parser;
 
@@ -172,6 +172,26 @@ impl PieceMove {
         Self::from_algebraic_impl(position, parsed, game_type)
     }
 
+    pub fn from_uci(
+        position: &Position,
+        notation: &str,
+        game_type: GameType,
+    ) -> Result<PieceMove, anyhow::Error> {
+        let parsed = parser::ParsedMove::from_uci(notation, position, false)?;
+        println!("Parsed move {}: {:?}", notation, parsed);
+        Self::from_algebraic_impl(position, parsed, game_type)
+    }
+
+    pub fn from_uci_inverted(
+        position: &Position,
+        notation_inverted: &str,
+        game_type: GameType,
+    ) -> Result<PieceMove, anyhow::Error> {
+        let parsed = parser::ParsedMove::from_uci(notation_inverted, position, true)?;
+        println!("Parsed inverted move {}: {:?}", notation_inverted, parsed);
+        Self::from_algebraic_impl(position, parsed, game_type)
+    }
+
     fn from_algebraic_impl(
         position: &Position,
         parsed: parser::ParsedMove,
@@ -229,12 +249,14 @@ impl PieceMove {
                     };
 
                     // Full move matching logic
-                    mv.piece_type == parsed.piece_type &&  // Match piece type
+                    let res = mv.piece_type == parsed.piece_type &&  // Match piece type
                         mv.to == Pos::xy(parsed.to_file, parsed.to_rank) &&  // Match destination square
                         (!parsed.is_capture || mv.is_capture()) &&  // Match capture flag if specified
                         parsed.from_file.map_or(true, |file| mv.from.get_col() == file) &&  // Match source file if specified
                         parsed.from_rank.map_or(true, |rank| mv.from.get_row() == rank) &&  // Match source rank if specified
-                        rescue_drop_matches // Match rescue/drop pattern if specified
+                        rescue_drop_matches; // Match rescue/drop pattern if specified
+
+                    res
                 })
                 .collect();
 
@@ -272,6 +294,37 @@ impl PieceMove {
 
         // Return the first matching move (we've already filtered by disambiguation)
         Ok(matching_moves.remove(0))
+    }
+
+    pub fn to_uci(&self) -> String {
+        match self.move_type {
+            MoveType::Normal => format!("{}{}", self.from.to_algebraic(), self.to.to_algebraic()),
+            MoveType::Capture(_) => {
+                format!("{}{}", self.from.to_algebraic(), self.to.to_algebraic())
+            }
+            MoveType::Castle { .. } => {
+                format!("{}{}", self.from.to_algebraic(), self.to.to_algebraic())
+            }
+            MoveType::EnPassant(_) => {
+                format!("{}{}", self.from.to_algebraic(), self.to.to_algebraic())
+            }
+            MoveType::Promotion(piece) => format!(
+                "{}{}{}",
+                self.from.to_algebraic(),
+                self.to.to_algebraic(),
+                piece.to_algebraic(Color::White), // ??
+            ),
+            MoveType::CapturePromotion {
+                captured: _,
+                promoted_to,
+            } => format!(
+                "{}{}{}",
+                self.from.to_algebraic(),
+                self.to.to_algebraic(),
+                promoted_to.to_algebraic(Color::White), // ??
+            ),
+            _ => unimplemented!(),
+        }
     }
 }
 

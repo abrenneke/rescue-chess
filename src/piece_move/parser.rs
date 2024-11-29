@@ -1,4 +1,4 @@
-use crate::PieceType;
+use crate::{PieceType, Pos, Position};
 
 #[derive(Debug)]
 enum ParserState {
@@ -27,9 +27,76 @@ pub struct ParsedMove {
     pub rescue_drop: Option<RescueOrDrop>,
     pub rescue_drop_file: Option<u8>,
     pub rescue_drop_rank: Option<u8>,
+    pub promotion_to: Option<PieceType>,
+}
+
+impl std::fmt::Display for ParsedMove {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_algebraic())
+    }
 }
 
 impl ParsedMove {
+    pub fn from_uci(uci: &str, position: &Position, inverted: bool) -> Result<Self, anyhow::Error> {
+        let from_file = uci
+            .chars()
+            .nth(0)
+            .ok_or_else(|| anyhow::anyhow!("Invalid UCI"))?;
+        let from_rank = uci
+            .chars()
+            .nth(1)
+            .ok_or_else(|| anyhow::anyhow!("Invalid UCI"))?;
+        let to_file = uci
+            .chars()
+            .nth(2)
+            .ok_or_else(|| anyhow::anyhow!("Invalid UCI"))?;
+        let to_rank = uci
+            .chars()
+            .nth(3)
+            .ok_or_else(|| anyhow::anyhow!("Invalid UCI"))?;
+        let promotion = uci.chars().nth(4).map(|c| match c {
+            'q' => PieceType::Queen,
+            'r' => PieceType::Rook,
+            'b' => PieceType::Bishop,
+            'n' => PieceType::Knight,
+            _ => PieceType::Queen,
+        });
+
+        let from_pos = if inverted {
+            Pos::from_algebraic(&format!("{}{}", from_file, from_rank))
+                .unwrap()
+                .invert()
+        } else {
+            Pos::from_algebraic(&format!("{}{}", from_file, from_rank)).unwrap()
+        };
+
+        let to_pos = if inverted {
+            Pos::from_algebraic(&format!("{}{}", to_file, to_rank))
+                .unwrap()
+                .invert()
+        } else {
+            Pos::from_algebraic(&format!("{}{}", to_file, to_rank)).unwrap()
+        };
+
+        let piece_type = position
+            .get_piece_at(from_pos)
+            .ok_or_else(|| anyhow::anyhow!("No piece at source square"))?
+            .piece_type;
+
+        Ok(Self {
+            piece_type,
+            from_file: Some(from_pos.get_col()),
+            from_rank: Some(from_pos.get_row()),
+            to_file: to_pos.get_col(),
+            to_rank: to_pos.get_row(),
+            is_capture: false,
+            rescue_drop: None,
+            rescue_drop_file: None,
+            rescue_drop_rank: None,
+            promotion_to: promotion,
+        })
+    }
+
     pub fn invert(&mut self) {
         if let Some(file) = self.from_file {
             self.from_file = Some(7 - file);
@@ -112,6 +179,7 @@ impl PieceMoveParser {
                 rescue_drop: None,
                 rescue_drop_file: None,
                 rescue_drop_rank: None,
+                promotion_to: None,
             },
             last_file: None,
             last_rank: None,

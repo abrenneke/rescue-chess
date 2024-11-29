@@ -136,24 +136,29 @@ impl Piece {
 
 impl std::fmt::Display for Piece {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.color == Color::White {
-            match self.piece_type {
-                PieceType::Pawn => write!(f, "P"),
-                PieceType::Knight => write!(f, "N"),
-                PieceType::Bishop => write!(f, "B"),
-                PieceType::Rook => write!(f, "R"),
-                PieceType::Queen => write!(f, "Q"),
-                PieceType::King => write!(f, "K"),
-            }
-        } else {
-            match self.piece_type {
-                PieceType::Pawn => write!(f, "p"),
-                PieceType::Knight => write!(f, "n"),
-                PieceType::Bishop => write!(f, "b"),
-                PieceType::Rook => write!(f, "r"),
-                PieceType::Queen => write!(f, "q"),
-                PieceType::King => write!(f, "k"),
-            }
+        write!(f, "{}", self.piece_type.to_algebraic(self.color))
+    }
+}
+
+impl PieceType {
+    pub fn to_algebraic(&self, color: Color) -> &'static str {
+        match color {
+            Color::White => match self {
+                PieceType::Pawn => "P",
+                PieceType::Knight => "N",
+                PieceType::Bishop => "B",
+                PieceType::Rook => "R",
+                PieceType::Queen => "Q",
+                PieceType::King => "K",
+            },
+            Color::Black => match self {
+                PieceType::Pawn => "p",
+                PieceType::Knight => "n",
+                PieceType::Bishop => "b",
+                PieceType::Rook => "r",
+                PieceType::Queen => "q",
+                PieceType::King => "k",
+            },
         }
     }
 }
