@@ -93,6 +93,9 @@ impl CanMove for King {
                     && !all.get(Pos::from_algebraic("c1").unwrap())
                     && !all.get(Pos::from_algebraic("b1").unwrap())
                     && !King::is_in_check(&position)
+                    && position
+                        .get_piece_at(Pos::from_algebraic("a1").unwrap())
+                        .is_some_and(|p| p.color == Color::White && p.piece_type == PieceType::Rook)
                 {
                     board.set(Pos::from_algebraic("c1").unwrap());
                 }
@@ -102,6 +105,9 @@ impl CanMove for King {
                 if !all.get(Pos::from_algebraic("f1").unwrap())
                     && !all.get(Pos::from_algebraic("g1").unwrap())
                     && !King::is_in_check(&position)
+                    && position
+                        .get_piece_at(Pos::from_algebraic("h1").unwrap())
+                        .is_some_and(|p| p.color == Color::White && p.piece_type == PieceType::Rook)
                 {
                     board.set(Pos::from_algebraic("g1").unwrap());
                 }
@@ -116,6 +122,9 @@ impl CanMove for King {
                     && !all.get(Pos::from_algebraic("f1").unwrap())
                     && !all.get(Pos::from_algebraic("g1").unwrap())
                     && !King::is_in_check(&position)
+                    && position
+                        .get_piece_at(Pos::from_algebraic("h1").unwrap())
+                        .is_some_and(|p| p.color == Color::White && p.piece_type == PieceType::Rook)
                 {
                     board.set(Pos::from_algebraic("f1").unwrap());
                 }
@@ -126,6 +135,9 @@ impl CanMove for King {
                 if !all.get(Pos::from_algebraic("b1").unwrap())
                     && !all.get(Pos::from_algebraic("c1").unwrap())
                     && !King::is_in_check(&position)
+                    && position
+                        .get_piece_at(Pos::from_algebraic("a1").unwrap())
+                        .is_some_and(|p| p.color == Color::White && p.piece_type == PieceType::Rook)
                 {
                     board.set(Pos::from_algebraic("b1").unwrap());
                 }

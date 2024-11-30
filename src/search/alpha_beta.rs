@@ -1,3 +1,5 @@
+use tracing::trace;
+
 use crate::{evaluation::order_moves, piece_move::GameType, Color, PieceMove, Position};
 
 use super::{
@@ -138,9 +140,10 @@ pub fn search(position: &Position, state: &mut SearchState, params: SearchParams
         }
 
         if params.debug_print {
-            println!(
+            trace!(
                 "Window search failed: alpha={}, beta={}, widening window",
-                alpha, beta
+                alpha,
+                beta
             );
         }
 
@@ -163,8 +166,8 @@ pub fn search(position: &Position, state: &mut SearchState, params: SearchParams
         }
 
         if failures > 11 {
-            println!("Failed to find a score within window after 10 tries");
-            println!("Failing position: {}", position.to_fen());
+            trace!("Failed to find a score within window after 10 tries");
+            trace!("Failing position: {}", position.to_fen());
 
             panic!("Failed to find a score within window after 10 tries");
         }
@@ -216,7 +219,7 @@ pub fn alpha_beta(
             .try_get(position, depth, alpha, beta)
         {
             if params.debug_print_verbose {
-                println!(
+                trace!(
                     "{}Cached position found: {}",
                     "\t".repeat((params.depth - depth) as usize),
                     entry.score
@@ -244,7 +247,7 @@ pub fn alpha_beta(
     state.nodes_searched += 1;
 
     if state.nodes_searched % 1000000 == 0 {
-        println!("Nodes searched: {}", state.nodes_searched);
+        trace!("Nodes searched: {}", state.nodes_searched);
     }
 
     // If the position is a checkmate, we should return a very low score.
@@ -253,7 +256,7 @@ pub fn alpha_beta(
         let score = -1000000;
 
         if params.debug_print_verbose {
-            println!(
+            trace!(
                 "{}Checkmate found: {}",
                 "\t".repeat((params.depth - depth) as usize),
                 score
@@ -281,7 +284,7 @@ pub fn alpha_beta(
         .score;
 
         if params.debug_print_verbose {
-            println!(
+            trace!(
                 "{}Quiescence search complete: {}",
                 "\t".repeat((params.depth - depth) as usize),
                 score
@@ -298,7 +301,7 @@ pub fn alpha_beta(
 
     if moves.is_empty() {
         if params.debug_print_verbose {
-            println!(
+            trace!(
                 "{}Stalemate found, scoring {}",
                 "\t".repeat((params.depth - depth) as usize),
                 STALEMATE
@@ -327,7 +330,7 @@ pub fn alpha_beta(
     };
 
     if params.debug_print_verbose {
-        println!(
+        trace!(
             "{}Searching depth {} with alpha={}, beta={}",
             "\t".repeat((params.depth - depth) as usize),
             depth,
@@ -343,7 +346,7 @@ pub fn alpha_beta(
     }
 
     if params.debug_print_verbose {
-        println!(
+        trace!(
             "{}Principal variation: {:?}",
             "\t".repeat((params.depth - iteration.depth) as usize),
             iteration.principal_variation
@@ -399,7 +402,7 @@ fn test_move(
     move_index: usize,
 ) -> Option<Result<SearchResult, Error>> {
     if params.debug_print_verbose {
-        println!(
+        trace!(
             "{}Testing move for {}: {} (alpha: {}, beta: {}) at {}",
             "\t".repeat((params.depth - iteration.depth) as usize),
             if position.true_active_color == Color::White {
@@ -431,7 +434,7 @@ fn test_move(
         let reduction = if move_index > 6 { 2 } else { 1 };
 
         if params.debug_print_verbose {
-            println!(
+            trace!(
                 "{}Reduced search for move: {}",
                 "\t".repeat((params.depth - iteration.depth) as usize),
                 mv
@@ -467,7 +470,7 @@ fn test_move(
     // If LMR was not done or the reduced search beat alpha, do a full-depth search
     if score.is_none() {
         if params.debug_print_verbose {
-            println!(
+            trace!(
                 "{}Full-depth search for move: {}",
                 "\t".repeat((params.depth - iteration.depth) as usize),
                 if position.true_active_color == Color::White {
@@ -512,7 +515,7 @@ fn test_move(
         }
 
         if params.debug_print_verbose {
-            println!(
+            trace!(
                 "{}Pruned move: {} (score: {}, beta: {})",
                 "\t".repeat((params.depth - iteration.depth) as usize),
                 mv,
@@ -545,7 +548,7 @@ fn test_move(
         iteration.principal_variation = Some(principal_variation);
 
         if params.debug_print_verbose {
-            println!(
+            trace!(
                 "{}New best move: {} (score: {})",
                 "\t".repeat((params.depth - iteration.depth) as usize),
                 mv,
@@ -555,7 +558,7 @@ fn test_move(
     }
 
     if params.debug_print_verbose {
-        println!(
+        trace!(
             "{}Move search complete. No beta cutoff: {} (score: {})",
             "\t".repeat((params.depth - iteration.depth) as usize),
             mv,
@@ -594,7 +597,7 @@ pub mod tests {
         let result = search(&position, &mut state, params);
         let best_move = result.best_move.unwrap().inverted().to_string();
 
-        println!(
+        trace!(
             "{}",
             result
                 .principal_variation
@@ -614,9 +617,13 @@ pub mod tests {
             best_move
         );
 
-        println!(
+        trace!(
             "Defended Scholar's Mate with {} (score: {}, nodes: {}, cached: {}, pruned: {})",
-            best_move, result.score, result.nodes_searched, result.cached_positions, result.pruned
+            best_move,
+            result.score,
+            result.nodes_searched,
+            result.cached_positions,
+            result.pruned
         );
     }
 
@@ -669,7 +676,7 @@ pub mod tests {
             let result = search(&position, &mut state, params);
             let best_move = result.best_move.unwrap().to_string();
 
-            println!(
+            trace!(
                 "chose {} (score: {}, nodes: {}, cached: {}, pruned: {})",
                 best_move,
                 result.score,
@@ -678,7 +685,7 @@ pub mod tests {
                 result.pruned
             );
 
-            println!(
+            trace!(
                 "Principal variation: {}",
                 result
                     .principal_variation
@@ -701,7 +708,7 @@ pub mod tests {
     fn test_obvious_defense() {
         let position = Position::from_moves(&["e4", "e6", "e5", "Nc6"], GameType::Classic).unwrap();
 
-        println!("{}", position.to_board_string_with_rank_file(false));
+        trace!("{}", position.to_board_string_with_rank_file(false));
 
         // Test at multiple depths to see where it breaks
         for depth in 2..=5 {
@@ -720,7 +727,7 @@ pub mod tests {
 
             let best_move = result.best_move.unwrap().to_string();
 
-            println!(
+            trace!(
                 "chose {} (score: {}, nodes: {}, cached: {}, pruned: {})",
                 best_move,
                 result.score,
@@ -729,7 +736,7 @@ pub mod tests {
                 result.pruned
             );
 
-            println!(
+            trace!(
                 "Principal variation: {}",
                 result
                     .principal_variation

@@ -24,6 +24,8 @@ struct Cli {
 }
 
 fn main() {
+    tracing_subscriber::fmt::init();
+
     let args = Cli::parse();
 
     let game_type = if args.classic {

@@ -126,11 +126,13 @@ impl ParsedMove {
             PieceType::King => result.push('K'),
         }
 
+        // Internally, 0 is the top rank, so we need to invert the rank
+
         if let Some(file) = self.from_file {
             result.push((b'a' + file) as char);
         }
         if let Some(rank) = self.from_rank {
-            result.push((b'1' + rank) as char);
+            result.push((b'1' + (7 - rank)) as char);
         }
 
         if self.is_capture {
@@ -138,7 +140,7 @@ impl ParsedMove {
         }
 
         result.push((b'a' + self.to_file) as char);
-        result.push((b'1' + self.to_rank) as char);
+        result.push((b'1' + (7 - self.to_rank)) as char);
 
         if let Some(rescue_drop) = &self.rescue_drop {
             match rescue_drop {

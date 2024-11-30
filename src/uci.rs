@@ -1,6 +1,7 @@
 pub mod commands;
 
 use commands::{CommandHandler, UciCommand};
+use tracing::error;
 
 use crate::search::game_state::GameState;
 use std::io::{self};
@@ -32,6 +33,7 @@ impl UciEngine {
             UciCommand::Quit => Ok(false),
             UciCommand::SetOption(cmd) => cmd.execute(self),
             UciCommand::Unknown(cmd) => {
+                error!("Unknown command: {}", cmd);
                 eprintln!("Unknown command: {}", cmd);
                 Ok(true)
             }
@@ -282,5 +284,28 @@ mod tests {
             .current_position
             .get_piece_at(Pos::from_algebraic("e5").unwrap().invert())
             .is_some());
+    }
+
+    #[test]
+    fn castling() {
+        let (mut engine, _capture) = create_test_engine();
+
+        // Test starting position
+        let cmd = "position startpos moves e2e4 b8c6 g1f3 g8f6 b1c3 d7d5 e4e5 f6e4 f1d3 c8f5 d1e2 e4c3 d2c3 f5d3 c2d3 e7e6 f3g5 f8e7 e2h5 g7g6 h5h3 e7g5 f2f4 g5h4 g2g3 h4e7 f4f5 c6e5 e1g1"
+            .parse::<UciCommand>()
+            .unwrap();
+
+        engine.handle_command(cmd).unwrap();
+    }
+
+    #[test]
+    fn castling_2() {
+        let (mut engine, _capture) = create_test_engine();
+
+        let cmd = "position startpos moves d2d4 d7d5 b1c3 g8f6 c1f4 c8f5 c3b5 b8a6 g1f3 f6h5 f4d2 f5c2 d1c2 d8d7 e2e3 d7e6 b5c7 a6c7 c2c7 a7a6 c7b7 e6c8 f1a6 c8b7 a6b7 a8a7 b7d5 a7c7 f3e5 e7e6 d5c6 c7c6 e5c6 f8d6 e3e4 f7f5 e4e5 h5f6 e5d6 e8g8 c6d8 f8d8"
+            .parse::<UciCommand>()
+            .unwrap();
+
+        engine.handle_command(cmd).unwrap();
     }
 }

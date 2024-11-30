@@ -199,6 +199,7 @@ impl PieceMove {
     ) -> Result<PieceMove, anyhow::Error> {
         // Get all legal moves for pieces of this type
         let legal_moves = position.get_all_legal_moves(game_type)?;
+
         let mut matching_moves: Vec<PieceMove> =
             legal_moves
                 .into_iter()
@@ -206,7 +207,12 @@ impl PieceMove {
                     // Helper function to check if move matches rescue/drop pattern
                     let rescue_drop_matches = match (&parsed.rescue_drop, &mv.move_type) {
                         // No rescue/drop specified in notation
-                        (None, MoveType::Normal) | (None, MoveType::Capture(_)) => true,
+                        (None, MoveType::Normal)
+                        | (None, MoveType::Capture(_))
+                        | (None, MoveType::Castle { .. })
+                        | (None, MoveType::EnPassant(_))
+                        | (None, MoveType::Promotion(_))
+                        | (None, MoveType::CapturePromotion { .. }) => true,
 
                         // Rescue specified in notation
                         (Some(RescueOrDrop::Rescue), MoveType::NormalAndRescue(pos))

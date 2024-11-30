@@ -33,6 +33,8 @@ struct Cli {
 }
 
 fn main() {
+    tracing_subscriber::fmt::init();
+
     let args = Cli::parse();
 
     let position = args.fen.parse::<Position>();
@@ -70,12 +72,12 @@ fn main() {
             let params = SearchParams {
                 depth,
                 game_type,
-                debug_print: true,
-                debug_print_all_moves: true,
-                debug_print_verbose: true,
-                enable_transposition_table: false,
+                // debug_print: true,
+                // debug_print_all_moves: true,
+                // debug_print_verbose: true,
+                // enable_transposition_table: false,
                 enable_lmr: false,
-                enable_window_search: false,
+                // enable_window_search: false,
                 ..Default::default()
             };
 

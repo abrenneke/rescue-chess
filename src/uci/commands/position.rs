@@ -1,3 +1,5 @@
+use tracing::trace;
+
 use crate::{search::game_state::GameState, uci::UciEngine, Color, PieceMove, Position};
 
 use super::CommandHandler;
@@ -44,13 +46,15 @@ impl CommandHandler for PositionCommand {
                 Ok(mv) => {
                     let result = engine.game_state.apply_move(mv);
 
+                    trace!("Applied move: {}", move_str);
+
                     if let Err(e) = result {
-                        println!("Error applying move {}: {}", move_str, e);
+                        trace!("Error applying move {}: {}", move_str, e);
                         panic!("Error applying move {}: {}", move_str, e);
                     }
                 }
                 Err(e) => {
-                    println!("Error parsing move {}: {}", move_str, e);
+                    trace!("Error parsing move {}: {}", move_str, e);
                     panic!("Error parsing move {}: {}", move_str, e);
                 }
             }

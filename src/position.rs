@@ -335,8 +335,9 @@ impl Position {
             }
             None => {
                 return Err(anyhow::anyhow!(
-                    "No piece at position {}, board state:\n{}",
+                    "No piece at position {} to move to {}, board state:\n{}",
                     from.to_algebraic(),
+                    to.to_algebraic(),
                     self.to_board_string_with_rank_file(false)
                 ));
             }
@@ -484,6 +485,7 @@ impl Position {
                         && piece.position == Pos::xy(4, 7)
                         && to == Pos::xy(6, 7)
                     {
+                        // White kingside castle
                         moves.push(PieceMove {
                             from: piece.position,
                             to,
@@ -497,12 +499,41 @@ impl Position {
                         && piece.position == Pos::xy(4, 7)
                         && to == Pos::xy(2, 7)
                     {
+                        // White queenside castle
                         moves.push(PieceMove {
                             from: piece.position,
                             to,
                             move_type: MoveType::Castle {
                                 king: Pos::xy(4, 7),
                                 rook: Pos::xy(0, 7),
+                            },
+                            piece_type: piece.piece_type,
+                        });
+                    } else if piece.piece_type == PieceType::King
+                        && piece.position == Pos::xy(3, 7)
+                        && to == Pos::xy(1, 7)
+                    {
+                        // Black queenside castle
+                        moves.push(PieceMove {
+                            from: piece.position,
+                            to,
+                            move_type: MoveType::Castle {
+                                king: Pos::xy(3, 7),
+                                rook: Pos::xy(0, 7),
+                            },
+                            piece_type: piece.piece_type,
+                        });
+                    } else if piece.piece_type == PieceType::King
+                        && piece.position == Pos::xy(3, 7)
+                        && to == Pos::xy(5, 7)
+                    {
+                        // Black kingside castle
+                        moves.push(PieceMove {
+                            from: piece.position,
+                            to,
+                            move_type: MoveType::Castle {
+                                king: Pos::xy(3, 7),
+                                rook: Pos::xy(7, 7),
                             },
                             piece_type: piece.piece_type,
                         });
@@ -753,10 +784,23 @@ impl Position {
             }
             MoveType::Castle { king: _, rook: _ } => {
                 self.move_piece(mv.from, mv.to)?;
-                if mv.to == Pos::xy(6, 7) {
-                    self.move_piece(Pos::xy(7, 7), Pos::xy(5, 7))?;
+
+                if mv.from == Pos::xy(4, 7) {
+                    // White castle
+                    if mv.to == Pos::xy(6, 7) {
+                        self.move_piece(Pos::xy(7, 7), Pos::xy(5, 7))?;
+                    } else {
+                        self.move_piece(Pos::xy(0, 7), Pos::xy(3, 7))?;
+                    }
+                } else if mv.from == Pos::xy(3, 7) {
+                    // Black castle
+                    if mv.to == Pos::xy(1, 7) {
+                        self.move_piece(Pos::xy(0, 7), Pos::xy(2, 7))?;
+                    } else {
+                        self.move_piece(Pos::xy(7, 7), Pos::xy(4, 7))?;
+                    }
                 } else {
-                    self.move_piece(Pos::xy(0, 7), Pos::xy(3, 7))?;
+                    panic!("Illegal castle move");
                 }
             }
             MoveType::Promotion(piece_type) => {
@@ -854,10 +898,20 @@ impl Position {
             }
             MoveType::Castle { king: _, rook: _ } => {
                 self.move_piece(mv.to, mv.from)?;
-                if mv.to == Pos::xy(6, 7) {
-                    self.move_piece(Pos::xy(5, 7), Pos::xy(7, 7))?;
+                if mv.from == Pos::xy(4, 7) {
+                    if mv.to == Pos::xy(6, 7) {
+                        self.move_piece(Pos::xy(5, 7), Pos::xy(7, 7))?;
+                    } else {
+                        self.move_piece(Pos::xy(3, 7), Pos::xy(0, 7))?;
+                    }
+                } else if mv.from == Pos::xy(3, 7) {
+                    if mv.to == Pos::xy(1, 7) {
+                        self.move_piece(Pos::xy(2, 7), Pos::xy(0, 7))?;
+                    } else {
+                        self.move_piece(Pos::xy(4, 7), Pos::xy(7, 7))?;
+                    }
                 } else {
-                    self.move_piece(Pos::xy(3, 7), Pos::xy(0, 7))?;
+                    panic!("Illegal castle move");
                 }
             }
             MoveType::Promotion(_) => {
@@ -1391,5 +1445,22 @@ mod tests {
                 && mv.to == Pos::from_algebraic("g1").unwrap())
                 == false
         );
+    }
+
+    #[test]
+    fn black_castle() {
+        let mut position =
+            Position::parse_from_fen("4k2r/6pp/2NPpn2/5p2/3P4/8/PP1B1PPP/R3K2R b Qkq - 0 1")
+                .unwrap();
+
+        println!("{}", position.to_board_string_with_rank_file(false));
+
+        let mv = PieceMove::from_uci_inverted(&position, "e8g8", GameType::Classic).unwrap();
+
+        println!("{}", mv);
+
+        position.apply_move(mv).unwrap();
+
+        println!("{}", position.to_board_string_with_rank_file(false));
     }
 }

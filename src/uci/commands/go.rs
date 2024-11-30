@@ -1,5 +1,7 @@
 use std::io::Write;
 
+use tracing::trace;
+
 use crate::{uci::UciEngine, Color};
 
 use super::CommandHandler;
@@ -28,6 +30,12 @@ impl CommandHandler for GoCommand {
             engine.game_state.search_depth = depth;
         }
 
+        trace!("Searching to depth {}", engine.game_state.search_depth);
+        trace!(
+            "Current position: {}",
+            engine.game_state.current_position.to_fen()
+        );
+
         // Perform search
         match engine.game_state.search_and_apply() {
             Ok((results, _)) => {
@@ -36,13 +44,15 @@ impl CommandHandler for GoCommand {
                         best_move = best_move.inverted();
                     }
 
+                    trace!("Best move: {}", best_move);
                     writeln!(engine.stdout, "bestmove {}", best_move.to_uci())?;
                 } else {
+                    trace!("No best move found");
                     writeln!(engine.stdout, "bestmove 0000")?;
                 }
             }
             Err(e) => {
-                eprintln!("Search error: {}", e);
+                trace!("Error searching: {}", e);
                 writeln!(engine.stdout, "bestmove 0000")?;
             }
         }

@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use tracing::trace;
+
 use crate::{piece_move::GameType, Color, PieceMove, Position};
 
 use super::{
@@ -120,6 +122,7 @@ impl GameState {
             game_type: self.game_type,
             previous_score: self.previous_score(self.current_turn),
             debug_print: true,
+            enable_lmr: false,
             ..Default::default()
         };
 
@@ -137,7 +140,7 @@ impl GameState {
 
         if self.positions[&self.current_position] > 1 {
             if self.debug_logs_1 {
-                println!(
+                trace!(
                     "Position has been seen > 1 time, increasing depth to {}",
                     self.search_depth + 1,
                 );
