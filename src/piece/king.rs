@@ -87,7 +87,7 @@ impl CanMove for King {
             board.set(pos.moved_unchecked(-1, 0));
         }
 
-        if piece.color == Color::White {
+        if position.true_active_color == Color::White {
             if position.castling_rights.white_queen_side {
                 if !all.get(Pos::from_algebraic("d1").unwrap())
                     && !all.get(Pos::from_algebraic("c1").unwrap())
@@ -107,22 +107,27 @@ impl CanMove for King {
                 }
             }
         } else {
+            // Black, but piece.color is white and we're on the first row, so we invert
+            // the queen side and king side castling squares because the chess board is mirrored,
+            // not rotationally symmetrical
             if position.castling_rights.black_queen_side {
-                if !all.get(Pos::from_algebraic("d8").unwrap())
-                    && !all.get(Pos::from_algebraic("c8").unwrap())
-                    && !all.get(Pos::from_algebraic("b8").unwrap())
+                // Black queen side is e1 + f1 + g1
+                if !all.get(Pos::from_algebraic("e1").unwrap())
+                    && !all.get(Pos::from_algebraic("f1").unwrap())
+                    && !all.get(Pos::from_algebraic("g1").unwrap())
                     && !King::is_in_check(&position)
                 {
-                    board.set(Pos::from_algebraic("c8").unwrap());
+                    board.set(Pos::from_algebraic("f1").unwrap());
                 }
             }
 
             if position.castling_rights.black_king_side {
-                if !all.get(Pos::from_algebraic("f8").unwrap())
-                    && !all.get(Pos::from_algebraic("g8").unwrap())
+                // Black king side is b1 + c1
+                if !all.get(Pos::from_algebraic("b1").unwrap())
+                    && !all.get(Pos::from_algebraic("c1").unwrap())
                     && !King::is_in_check(&position)
                 {
-                    board.set(Pos::from_algebraic("g8").unwrap());
+                    board.set(Pos::from_algebraic("b1").unwrap());
                 }
             }
         }
@@ -432,7 +437,7 @@ impl King {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Piece, PieceType, Position};
+    use crate::{Bitboard, Piece, PieceType, Pos, Position};
 
     #[test]
     pub fn move_king_empty_spaces() {
@@ -462,104 +467,144 @@ mod tests {
             .unwrap()
         );
     }
+    #[test]
+    fn test_white_kingside_castling() {
+        // Setup initial position with king and rook in starting positions
+        let king = Piece::new_white(PieceType::King, Pos::from_algebraic("e1").unwrap());
+        let mut position = Position::start_position();
 
-    #[cfg(test)]
-    mod tests {
-        use crate::{position::CastlingRights, Bitboard, Piece, PieceType, Pos, Position};
+        position
+            .remove_piece_at(Pos::from_algebraic("f1").unwrap())
+            .unwrap();
+        position
+            .remove_piece_at(Pos::from_algebraic("g1").unwrap())
+            .unwrap();
 
-        #[test]
-        fn test_white_kingside_castling() {
-            // Setup initial position with king and rook in starting positions
-            let king = Piece::new_white(PieceType::King, Pos::from_algebraic("e1").unwrap());
-            let position = Position {
-                white_king: Some(king.clone()),
-                castling_rights: CastlingRights {
-                    white_king_side: true,
-                    white_queen_side: false,
-                    black_king_side: false,
-                    black_queen_side: false,
-                },
-                white_map: Default::default(),
-                black_map: Default::default(),
-                ..Default::default()
-            };
+        let legal_moves = king.get_legal_moves(&position);
 
-            let legal_moves = king.get_legal_moves(&position);
+        // Verify that g1 (kingside castle square) is a legal move
+        assert!(legal_moves.get(Pos::from_algebraic("g1").unwrap()));
+    }
 
-            // Verify that g1 (kingside castle square) is a legal move
-            assert!(legal_moves.get(Pos::from_algebraic("g1").unwrap()));
-        }
+    #[test]
+    fn test_white_kingside_castling_blocked() {
+        // Setup position with piece blocking castling
+        let king = Piece::new_white(PieceType::King, Pos::from_algebraic("e1").unwrap());
+        let mut white_map: Bitboard = Default::default();
+        white_map.set(Pos::from_algebraic("f1").unwrap()); // Place blocking piece
 
-        #[test]
-        fn test_white_kingside_castling_blocked() {
-            // Setup position with piece blocking castling
-            let king = Piece::new_white(PieceType::King, Pos::from_algebraic("e1").unwrap());
-            let mut white_map: Bitboard = Default::default();
-            white_map.set(Pos::from_algebraic("f1").unwrap()); // Place blocking piece
+        let mut position = Position::start_position();
 
-            let position = Position {
-                white_king: Some(king.clone()),
-                castling_rights: CastlingRights {
-                    white_king_side: true,
-                    white_queen_side: false,
-                    black_king_side: false,
-                    black_queen_side: false,
-                },
-                white_map,
-                black_map: Default::default(),
-                ..Default::default()
-            };
+        position
+            .remove_piece_at(Pos::from_algebraic("f1").unwrap())
+            .unwrap();
 
-            let legal_moves = king.get_legal_moves(&position);
+        let legal_moves = king.get_legal_moves(&position);
 
-            // Verify that g1 is not a legal move when blocked
-            assert!(!legal_moves.get(Pos::from_algebraic("g1").unwrap()));
-        }
+        // Verify that g1 is not a legal move when blocked
+        assert!(!legal_moves.get(Pos::from_algebraic("g1").unwrap()));
+    }
 
-        #[test]
-        fn test_white_queenside_castling() {
-            let king = Piece::new_white(PieceType::King, Pos::from_algebraic("e1").unwrap());
-            let position = Position {
-                white_king: Some(king.clone()),
-                castling_rights: CastlingRights {
-                    white_king_side: false,
-                    white_queen_side: true,
-                    black_king_side: false,
-                    black_queen_side: false,
-                },
-                white_map: Default::default(),
-                black_map: Default::default(),
-                ..Default::default()
-            };
+    #[test]
+    fn test_white_queenside_castling() {
+        let king = Piece::new_white(PieceType::King, Pos::from_algebraic("e1").unwrap());
+        let mut position = Position::start_position();
 
-            let legal_moves = king.get_legal_moves(&position);
+        position
+            .remove_piece_at(Pos::from_algebraic("b1").unwrap())
+            .unwrap();
+        position
+            .remove_piece_at(Pos::from_algebraic("c1").unwrap())
+            .unwrap();
 
-            // Verify that c1 (queenside castle square) is a legal move
-            assert!(legal_moves.get(Pos::from_algebraic("c1").unwrap()));
-        }
+        let legal_moves = king.get_legal_moves(&position);
 
-        #[test]
-        fn test_castling_rights_disabled() {
-            let king = Piece::new_white(PieceType::King, Pos::from_algebraic("e1").unwrap());
-            let position = Position {
-                white_king: Some(king.clone()),
-                castling_rights: CastlingRights {
-                    white_king_side: false,
-                    white_queen_side: false,
-                    black_king_side: false,
-                    black_queen_side: false,
-                },
-                white_map: Default::default(),
-                black_map: Default::default(),
-                ..Default::default()
-            };
+        // Verify that c1 (queenside castle square) is a legal move
+        assert!(legal_moves.get(Pos::from_algebraic("c1").unwrap()));
+    }
 
-            let legal_moves = king.get_legal_moves(&position);
+    #[test]
+    fn test_castling_rights_disabled() {
+        let king = Piece::new_white(PieceType::King, Pos::from_algebraic("e1").unwrap());
+        let mut position = Position::start_position();
 
-            // Verify neither castling move is legal when rights are disabled
-            assert!(!legal_moves.get(Pos::from_algebraic("g1").unwrap()));
-            assert!(!legal_moves.get(Pos::from_algebraic("c1").unwrap()));
-        }
+        position
+            .remove_piece_at(Pos::from_algebraic("b1").unwrap())
+            .unwrap();
+
+        let legal_moves = king.get_legal_moves(&position);
+
+        // Verify neither castling move is legal when rights are disabled
+        assert!(!legal_moves.get(Pos::from_algebraic("g1").unwrap()));
+        assert!(!legal_moves.get(Pos::from_algebraic("c1").unwrap()));
+    }
+
+    #[test]
+    fn test_black_kingside_castling() {
+        let mut position = Position::start_position();
+        position.invert();
+
+        position
+            .remove_piece_at(Pos::from_algebraic("b1").unwrap())
+            .unwrap();
+        position
+            .remove_piece_at(Pos::from_algebraic("c1").unwrap())
+            .unwrap();
+
+        let legal_moves = position.white_king.unwrap().get_legal_moves(&position);
+
+        assert!(legal_moves.get(Pos::from_algebraic("b1").unwrap()));
+    }
+
+    #[test]
+    fn test_black_kingside_castling_blocked() {
+        let mut position = Position::start_position();
+        position.invert();
+
+        position
+            .remove_piece_at(Pos::from_algebraic("b1").unwrap())
+            .unwrap();
+
+        let legal_moves = position.white_king.unwrap().get_legal_moves(&position);
+
+        assert!(!legal_moves.get(Pos::from_algebraic("b1").unwrap()));
+    }
+
+    #[test]
+    fn test_black_queenside_castling() {
+        let mut position = Position::start_position();
+        position.invert();
+
+        position
+            .remove_piece_at(Pos::from_algebraic("e1").unwrap())
+            .unwrap();
+        position
+            .remove_piece_at(Pos::from_algebraic("f1").unwrap())
+            .unwrap();
+        position
+            .remove_piece_at(Pos::from_algebraic("g1").unwrap())
+            .unwrap();
+
+        let legal_moves = position.white_king.unwrap().get_legal_moves(&position);
+
+        assert!(legal_moves.get(Pos::from_algebraic("f1").unwrap()));
+    }
+
+    #[test]
+    fn test_black_queenside_castling_blocked() {
+        let mut position = Position::start_position();
+        position.invert();
+
+        position
+            .remove_piece_at(Pos::from_algebraic("e1").unwrap())
+            .unwrap();
+        position
+            .remove_piece_at(Pos::from_algebraic("f1").unwrap())
+            .unwrap();
+
+        let legal_moves = position.white_king.unwrap().get_legal_moves(&position);
+
+        assert!(!legal_moves.get(Pos::from_algebraic("f1").unwrap()));
     }
 
     #[test]

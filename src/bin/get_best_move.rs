@@ -6,7 +6,7 @@ use rescue_chess::{
         search_results::SearchState,
         transposition_table::TranspositionTable,
     },
-    Position,
+    Color, Position,
 };
 
 #[derive(Parser)]
@@ -23,11 +23,11 @@ struct Cli {
     #[arg(short = 'c', long)]
     pub classic: bool,
 
-    #[arg(short = 'b', long)]
-    pub black: bool,
-
     #[arg(short = 'p', long)]
     pub print_board: bool,
+
+    #[arg(long)]
+    pub print_valid_moves: bool,
 
     pub fen: String,
 }
@@ -47,14 +47,21 @@ fn main() {
 
     match position {
         Ok(position) => {
-            let position = if args.black {
-                position.inverted()
-            } else {
-                position
-            };
-
             if args.print_board {
                 println!("{}", position.to_board_string_with_rank_file(true));
+            }
+
+            if args.print_valid_moves {
+                println!(
+                    "{}",
+                    position
+                        .get_all_legal_moves(game_type)
+                        .unwrap()
+                        .iter()
+                        .map(|m| m.to_string())
+                        .collect::<Vec<String>>()
+                        .join(" ")
+                );
             }
 
             let mut transposition_table = TranspositionTable::new();
@@ -63,11 +70,22 @@ fn main() {
             let params = SearchParams {
                 depth,
                 game_type,
+                debug_print: true,
+                debug_print_all_moves: true,
+                debug_print_verbose: true,
+                enable_transposition_table: false,
+                enable_lmr: false,
+                enable_window_search: false,
                 ..Default::default()
             };
 
             let result = alpha_beta::search(&position, &mut state, params);
-            println!("{}", result.best_move.unwrap());
+
+            if position.true_active_color == Color::White {
+                println!("{}", result.best_move.unwrap());
+            } else {
+                println!("{}", result.best_move.unwrap().inverted());
+            }
 
             if args.stats {
                 println!("Nodes searched: {}", state.nodes_searched);

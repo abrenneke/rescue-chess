@@ -220,11 +220,16 @@ pub fn parse_position_from_fen(notation: &str) -> Result<Position, anyhow::Error
     let mut en_passant = None;
     let mut halfmove_clock = 0;
     let mut fullmove_number = 1;
+    let mut active_color = Color::White;
 
     if let Some(active_color_str) = notation.next() {
-        if active_color_str != "w" {
-            return Err(anyhow::anyhow!("Only white active color is supported"));
-        }
+        active_color = match active_color_str {
+            "w" => Color::White,
+            "b" => Color::Black,
+            _ => {
+                return Err(anyhow::anyhow!("Invalid active color in FEN notation"));
+            }
+        };
 
         let castling = notation.next().ok_or_else(|| {
             anyhow::anyhow!("FEN notation must contain castling rights information")
@@ -266,13 +271,20 @@ pub fn parse_position_from_fen(notation: &str) -> Result<Position, anyhow::Error
         fullmove_number = fullmove_number_str.parse()?;
     }
 
-    Ok(Position::new(
+    let mut position = Position::new(
         pieces,
         castling_rights,
         en_passant,
         halfmove_clock,
         fullmove_number,
-    ))
+    );
+
+    if active_color == Color::White {
+        Ok(position)
+    } else {
+        position.invert();
+        Ok(position)
+    }
 }
 
 /// Converts a piece type and color to FEN notation.
@@ -317,6 +329,15 @@ fn piece_type_to_fen(piece_type: PieceType, color: Color) -> char {
 /// assert_eq!(fen, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 /// ```
 pub fn position_to_fen(position: &Position) -> String {
+    let mut position = position.clone();
+
+    let true_active_color = position.true_active_color;
+
+    if true_active_color == Color::Black {
+        // It's actually black's turn, so we need to invert the position
+        position = position.inverted();
+    }
+
     let mut fen = String::new();
 
     for rank in 0..8 {
@@ -356,7 +377,13 @@ pub fn position_to_fen(position: &Position) -> String {
 
     fen.push(' ');
 
-    fen.push_str("w ");
+    if true_active_color == Color::White {
+        fen.push('w');
+    } else {
+        fen.push('b');
+    }
+
+    fen.push(' ');
 
     if position.castling_rights.white_king_side {
         fen.push('K');

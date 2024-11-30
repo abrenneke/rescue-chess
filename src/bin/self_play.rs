@@ -117,4 +117,5 @@ fn main() {
                 .to_board_string_with_rank_file(args.unicode)
         }
     );
+    println!("{}", game_state.current_position.to_fen())
 }

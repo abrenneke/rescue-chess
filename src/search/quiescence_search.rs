@@ -16,9 +16,22 @@ pub fn quiescence_search(
     depth: u32,
     state: &mut SearchState,
     params: &SearchParams,
-    is_white: bool,
     initial_depth: u32,
 ) -> Result<SearchResult, Error> {
+    if position.is_checkmate(params.game_type).unwrap() {
+        if params.debug_print_verbose {
+            println!(
+                "{}[Quiescence] Checkmate found",
+                "\t".repeat((initial_depth + (params.quiescence_depth - depth)) as usize)
+            );
+        }
+
+        return Ok(SearchResult {
+            principal_variation: None,
+            score: -1_000_000,
+        });
+    }
+
     // First, do a standing pat evaluation
     let stand_pat = evaluate_position(position);
 
@@ -122,7 +135,6 @@ pub fn quiescence_search(
             depth - 1,
             state,
             params,
-            !is_white,
             initial_depth,
         )?;
 

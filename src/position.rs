@@ -77,6 +77,8 @@ pub struct Position {
     pub position_lookup: [Option<u8>; 64],
 
     pub white_king: Option<Piece>,
+
+    pub true_active_color: Color,
 }
 
 /// Given a list of pieces, returns a bitboard with the positions of the pieces for the given color.
@@ -151,6 +153,7 @@ impl Position {
             position_lookup,
             white_king,
             all_map,
+            true_active_color: Color::White,
         }
     }
 
@@ -158,6 +161,10 @@ impl Position {
     pub fn start_position() -> Self {
         return Self::parse_from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
             .unwrap();
+    }
+
+    pub fn empty() -> Self {
+        Self::new(Vec::new(), Default::default(), None, 0, 1)
     }
 
     /// Inverts the position, i.e. makes the black pieces white and vice versa.
@@ -174,6 +181,8 @@ impl Position {
             piece.color = Color::White;
             piece.position = piece.position.invert();
         }
+
+        self.true_active_color = self.true_active_color.invert();
 
         self.calc_changes(true);
     }
@@ -1359,6 +1368,28 @@ mod tests {
         assert!(
             position.unapply_move(mv.clone()).is_err(),
             "Should error when no piece at destination"
+        );
+    }
+
+    #[test]
+    fn cannot_do_kg1() {
+        let position = Position::parse_from_fen(
+            "r2qkb1r/ppp2ppp/2n2n2/1B1p1b2/1P1P4/2P2N2/P4PPP/RNBQK2R b KQkq - 2 7",
+        )
+        .unwrap();
+
+        println!("{}", position.to_board_string_with_rank_file(false));
+
+        let moves = position.get_all_legal_moves(GameType::Classic).unwrap();
+
+        for mv in moves.iter() {
+            println!("{}", mv);
+        }
+
+        assert!(
+            moves.iter().any(|mv| mv.piece_type == PieceType::King
+                && mv.to == Pos::from_algebraic("g1").unwrap())
+                == false
         );
     }
 }
