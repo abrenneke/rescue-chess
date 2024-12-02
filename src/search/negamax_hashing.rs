@@ -51,7 +51,11 @@ pub fn negamax_hashing(
         child.apply_move(mv).unwrap();
         child.invert();
 
-        if let MoveType::Capture(captured) = mv.move_type {
+        if let MoveType::Capture {
+            captured,
+            captured_holding: _,
+        } = mv.move_type
+        {
             if captured == PieceType::King {
                 panic!("Capturing a king");
             }

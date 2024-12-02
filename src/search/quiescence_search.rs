@@ -85,9 +85,19 @@ pub fn quiescence_search(
     moves.retain(|mv| mv.is_capture());
 
     moves.sort_by_key(|mv| {
-        if let MoveType::Capture(captured) = mv.move_type {
+        if let MoveType::Capture {
+            captured,
+            captured_holding,
+        } = mv.move_type
+        {
             // Higher score = better move
-            piece_value(captured) * 10 - piece_value(mv.piece_type)
+            let base = piece_value(captured) * 10 - piece_value(mv.piece_type);
+
+            if let Some(captured_holding) = captured_holding {
+                base + piece_value(captured_holding)
+            } else {
+                base
+            }
         } else {
             0
         }

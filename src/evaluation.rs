@@ -78,8 +78,16 @@ fn score_move(_position: &Position, mv: &PieceMove, prev_best_move: Option<Piece
         // Add MVV-LVA scoring
         // Victim value - try to capture most valuable pieces first
 
-        if let MoveType::Capture(captured_piece) = mv.move_type {
-            score += piece_value(captured_piece) * 100;
+        if let MoveType::Capture {
+            captured,
+            captured_holding,
+        } = mv.move_type
+        {
+            score += piece_value(captured) * 100;
+
+            if let Some(captured_holding) = captured_holding {
+                score += piece_value(captured_holding) * 100;
+            }
         }
 
         // Subtract attacker value - prefer capturing with less valuable pieces
