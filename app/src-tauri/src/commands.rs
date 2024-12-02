@@ -20,7 +20,7 @@ use tauri::{command, Manager, State};
 
 use crate::global_state::GlobalState;
 
-const GAME_TYPE: GameType = GameType::Classic;
+const GAME_TYPE: GameType = GameType::Rescue;
 
 #[command]
 pub fn get_valid_positions_for(

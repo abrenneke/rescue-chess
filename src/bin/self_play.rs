@@ -40,6 +40,7 @@ fn main() {
     };
 
     let mut game_state = GameState::from_position(position);
+    game_state.game_type = game_type;
     game_state.debug_logs_1 = true;
 
     println!("\nStarting position:");
@@ -79,11 +80,11 @@ fn main() {
                     game_state
                         .current_position
                         .inverted()
-                        .to_board_string_with_rank_file(args.unicode)
+                        .to_board_string_with_rank_file_holding()
                 } else {
                     game_state
                         .current_position
-                        .to_board_string_with_rank_file(args.unicode)
+                        .to_board_string_with_rank_file_holding()
                 }
             );
             println!(

@@ -257,7 +257,7 @@
 
 <div class="chess-pieces">
   {#each piecesByColor as group}
-    {#each group as { x, y, type, color, id, displayX, displayY }}
+    {#each group as { x, y, type, color, id, displayX, displayY, holding }}
       <ChessPiece
         {board}
         onSelect={onPieceSelected}
@@ -267,6 +267,7 @@
         {color}
         {id}
         isSelected={id === selectedPiece?.id}
+        heldPiece={holding}
       />
     {/each}
   {/each}

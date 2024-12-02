@@ -264,8 +264,19 @@ impl Position {
             }
         };
 
-        if let Some(_) = rescuer_piece.holding {
-            return Err(anyhow::anyhow!("Rescuer already holding a piece"));
+        if rescuer_piece.holding.is_some() {
+            return Err(anyhow::anyhow!(
+                "Rescuer at {} already holding a piece!",
+                rescuer.to_algebraic()
+            ));
+        }
+
+        if rescued_piece.holding.is_some() {
+            return Err(anyhow::anyhow!(
+                "Piece at {} cannot rescue, rescued piece at {} already holding a piece!",
+                rescuer.to_algebraic(),
+                rescued.to_algebraic()
+            ));
         }
 
         if rescuer_piece.piece_type.can_hold(rescued_piece.piece_type) {
@@ -286,7 +297,13 @@ impl Position {
 
         let holding_type = match rescuer.holding {
             Some(holding_type) => holding_type,
-            None => return Err(anyhow::anyhow!("Rescuer not holding a piece")),
+            None => {
+                return Err(anyhow::anyhow!(
+                    "Holder at {} not holding a piece, cannot drop at {}",
+                    rescuer_pos.to_algebraic(),
+                    drop_pos.to_algebraic()
+                ));
+            }
         };
 
         if self.black_map.get(drop_pos) || self.white_map.get(drop_pos) {
@@ -412,7 +429,13 @@ impl Position {
 
         let mut position = self.clone();
 
+        // println!("{}", position.to_board_string_with_rank_file_holding());
+        // println!("Possible moves: {:?}", possible_moves);
+
         for mv in possible_moves.into_iter() {
+            let original_position = position.clone();
+            // println!("Applying move {}", mv);
+
             position.apply_move(mv)?;
 
             if !position.is_king_in_check()? {
@@ -420,6 +443,13 @@ impl Position {
             }
 
             position.unapply_move(mv)?;
+
+            // println!("Unapplied move {}, following board should match:", mv);
+            // println!("{}", position.to_board_string_with_rank_file_holding());
+            // assert_eq!(
+            //     original_position.to_board_string_with_rank_file_holding(),
+            //     position.to_board_string_with_rank_file_holding()
+            // );
         }
 
         Ok(moves)
@@ -452,6 +482,7 @@ impl Position {
                                 if let Some(piece_at_pos) = self.get_piece_at(dir) {
                                     if piece_at_pos.color == Color::White
                                         && piece.piece_type.can_hold(piece_at_pos.piece_type)
+                                        && piece_at_pos.holding.is_none()
                                     {
                                         moves.push(PieceMove {
                                             from: piece.position,
@@ -600,7 +631,7 @@ impl Position {
                             for dir in to.get_cardinal_adjacent().into_iter() {
                                 if let Some(dir) = dir {
                                     if let Some(piece_at_pos) = self.get_piece_at(dir) {
-                                        if piece_at_pos == piece {
+                                        if piece_at_pos == piece || piece_at_pos.holding.is_some() {
                                             continue;
                                         }
 
@@ -709,6 +740,46 @@ impl Position {
         board_string
     }
 
+    pub fn to_board_string_with_rank_file_holding(&self) -> String {
+        let mut board = [[None; 8]; 8];
+
+        for piece in self.white_pieces.iter().chain(self.black_pieces.iter()) {
+            let (x, y) = piece.position.as_tuple();
+            board[y as usize][x as usize] = Some(piece);
+        }
+
+        let mut board_string = String::new();
+
+        for rank in 0..8 {
+            board_string.push_str(&(8 - rank).to_string());
+            board_string.push(' ');
+
+            for file in 0..8 {
+                match board[rank][file] {
+                    Some(piece) => {
+                        let piece_str = piece.piece_type.to_algebraic(piece.color);
+                        board_string.push_str(&piece_str);
+                        if let Some(holding) = piece.holding {
+                            board_string.push_str(&holding.to_algebraic(piece.color));
+                        } else {
+                            board_string.push(' ');
+                        }
+                    }
+                    None => {
+                        board_string.push_str(". ");
+                    }
+                }
+                board_string.push(' ');
+            }
+
+            board_string.push('\n');
+        }
+
+        board_string.push_str("  a  b  c  d  e  f  g  h\n");
+
+        board_string
+    }
+
     pub fn apply_move(&mut self, mv: PieceMove) -> Result<(), anyhow::Error> {
         let piece = self.get_piece_at(mv.from).ok_or_else(|| {
             anyhow::anyhow!(
@@ -721,7 +792,10 @@ impl Position {
         let legal_moves = piece.get_legal_moves(self);
 
         let is_rescue_or_drop = match mv.move_type {
-            MoveType::NormalAndRescue(_) | MoveType::NormalAndDrop(_) => true,
+            MoveType::NormalAndRescue(_)
+            | MoveType::NormalAndDrop(_)
+            | MoveType::CaptureAndDrop { .. }
+            | MoveType::CaptureAndRescue { .. } => true,
             _ => false,
         };
 
@@ -730,7 +804,7 @@ impl Position {
                 "Illegal move {}! Board state:\n{}\n{}, legal moves: {}",
                 mv.to_string(),
                 self.to_fen(),
-                self.to_board_string_with_rank_file(false),
+                self.to_board_string_with_rank_file_holding(),
                 legal_moves
                     .iter()
                     .map(|pos| pos.to_algebraic())
@@ -890,7 +964,7 @@ impl Position {
             } => {
                 self.rescue_piece(piece.position, drop_pos)?;
                 self.move_piece(mv.to, mv.from)?;
-                self.add_piece(Piece::new(captured_type, color, mv.to))?;
+                self.add_piece(Piece::new(captured_type, color.invert(), mv.to))?;
             }
             MoveType::EnPassant(pos) => {
                 self.move_piece(mv.to, mv.from)?;

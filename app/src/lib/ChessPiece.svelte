@@ -10,6 +10,9 @@
   export let color: string;
   export let type: 'k' | 'q' | 'b' | 'n' | 'r' | 'p';
 
+  // Update type to only include the piece type since color must match
+  export let heldPiece: 'k' | 'q' | 'b' | 'n' | 'r' | 'p' | null = null;
+
   export let x: number;
   export let y: number;
 
@@ -32,6 +35,19 @@
     p: 225,
   }[type];
   $: viewBoxY = color === 'black' ? 45 : 0;
+
+  // Held piece uses same color as main piece
+  $: heldPieceViewBoxX = heldPiece
+    ? {
+        k: 0,
+        q: 45,
+        b: 90,
+        n: 135,
+        r: 180,
+        p: 225,
+      }[heldPiece]
+    : 0;
+  $: heldPieceViewBoxY = viewBoxY; // Same color as parent piece
 
   onMount(() => {
     const resize = () => {
@@ -63,6 +79,16 @@
 >
   <div class="selected-border" />
   <img class="icon" alt="chess piece" src={`${chessPiecesSvg}#svgView(viewBox(${viewBoxX} ${viewBoxY} 45 45))`} />
+
+  {#if heldPiece}
+    <div class="held-piece">
+      <img
+        class="held-piece-icon"
+        alt="held chess piece"
+        src={`${chessPiecesSvg}#svgView(viewBox(${heldPieceViewBoxX} ${heldPieceViewBoxY} 45 45))`}
+      />
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -83,6 +109,22 @@
   }
 
   .icon {
+    width: 100%;
+    height: 100%;
+  }
+
+  .held-piece {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 40%;
+    height: 40%;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 50%;
+    padding: 2px;
+  }
+
+  .held-piece-icon {
     width: 100%;
     height: 100%;
   }
