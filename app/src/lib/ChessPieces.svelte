@@ -4,10 +4,20 @@
   import { nanoid } from 'nanoid';
   import { invoke } from '@tauri-apps/api/core';
   import PossibleMove from './PossibleMove.svelte';
-  import { positionToXy, type PieceMove, type BlackMoveResponse } from './chess';
+  import {
+    positionToXy,
+    type PieceMove,
+    type BlackMoveResponse,
+    type WhiteMoveResponse,
+    type PawnPromotion,
+  } from './chess';
   import { listen } from '@tauri-apps/api/event';
+  import Arrow from './Arrow.svelte';
 
   let blackMoveListener: ((response: BlackMoveResponse) => void) | undefined;
+  let whiteMoveListener: ((response: WhiteMoveResponse) => void) | undefined;
+
+  export let isSelfPlay;
 
   if (blackMoveListener == null) {
     blackMoveListener = async (response) => {
@@ -17,6 +27,27 @@
 
     listen('black_move', (event) => {
       blackMoveListener!(event.payload as BlackMoveResponse);
+
+      if (isSelfPlay) {
+        console.log("waiting for white's move");
+        invoke<WhiteMoveResponse>('get_white_move', {});
+      }
+    });
+  }
+
+  if (whiteMoveListener == null) {
+    whiteMoveListener = async (response) => {
+      console.log('received white move', response);
+      await applyMove(response.move_from_whites_perspective);
+    };
+
+    listen('white_move', (event) => {
+      whiteMoveListener!(event.payload as WhiteMoveResponse);
+
+      if (isSelfPlay) {
+        console.log("waiting for black's move");
+        invoke<BlackMoveResponse>('get_black_move', {});
+      }
     });
   }
 
@@ -40,6 +71,19 @@
   let pieces: Piece[] = [];
 
   let possibleMovePositions: { x: number; y: number; type: 'normal' | 'capture' }[] = [];
+
+  let lastMove:
+    | {
+        fromX: number;
+        fromY: number;
+        toX: number;
+        toY: number;
+        rescueFromX?: number;
+        rescueFromY?: number;
+        dropToX?: number;
+        dropToY?: number;
+      }
+    | undefined;
 
   function parseFen(fen: string): Piece[] {
     const [positions] = fen.split(' ');
@@ -118,10 +162,10 @@
       pieces = pieces.filter((p) => p.id !== rescued.id);
       from.holding = rescued.type;
     } else if (move.move_type.type === 'NormalAndDrop') {
-      const [dropX, dropY] = positionToXy(move.move_type.value);
+      const [dropX, dropY] = positionToXy(move.move_type.value.pos);
       pieces.push({
         id: nanoid(),
-        type: from.holding!,
+        type: move.move_type.value.promoted_to ? promotionToPieceType(move.move_type.value.promoted_to) : from.holding!,
         color: from.color,
         x: dropX,
         y: dropY,
@@ -133,7 +177,7 @@
       const [dropX, dropY] = positionToXy(move.move_type.value.drop_pos);
       pieces.push({
         id: nanoid(),
-        type: from.holding!,
+        type: move.move_type.value.promoted_to ? promotionToPieceType(move.move_type.value.promoted_to) : from.holding!,
         color: from.color,
         x: dropX,
         y: dropY,
@@ -143,18 +187,68 @@
       from.holding = undefined;
     }
 
+    if (move.move_type.type === 'Promotion') {
+      from.type = promotionToPieceType(move.move_type.value);
+    } else if (move.move_type.type === 'CapturePromotion') {
+      from.type = promotionToPieceType(move.move_type.value.promoted_to);
+    }
+
     from.x = toX;
     from.y = toY;
 
     lerpPieceOverTime(from, [from.displayX, from.displayY], [toX, toY], 150);
 
     pieces = pieces;
+
+    // Add rescue/drop coordinates based on move type
+    let rescueFromX: number | undefined;
+    let rescueFromY: number | undefined;
+    let dropToX: number | undefined;
+    let dropToY: number | undefined;
+
+    if (move.move_type.type === 'NormalAndRescue') {
+      const [x, y] = positionToXy(move.move_type.value);
+      [rescueFromX, rescueFromY] = [x, y];
+    } else if (move.move_type.type === 'CaptureAndRescue') {
+      const [x, y] = positionToXy(move.move_type.value.rescued_pos);
+      [rescueFromX, rescueFromY] = [x, y];
+    } else if (move.move_type.type === 'NormalAndDrop') {
+      const [x, y] = positionToXy(move.move_type.value.pos);
+      [dropToX, dropToY] = [x, y];
+    } else if (move.move_type.type === 'CaptureAndDrop') {
+      const [x, y] = positionToXy(move.move_type.value.drop_pos);
+      [dropToX, dropToY] = [x, y];
+    }
+
+    lastMove = {
+      fromX,
+      fromY,
+      toX,
+      toY,
+      rescueFromX,
+      rescueFromY,
+      dropToX,
+      dropToY,
+    };
   }
 
   onMount(async () => {
     await invoke('reset', {});
     await reloadPieces();
   });
+
+  function promotionToPieceType(promotion: PawnPromotion): Piece['type'] {
+    switch (promotion) {
+      case 'Bishop':
+        return 'b';
+      case 'Knight':
+        return 'n';
+      case 'Queen':
+        return 'q';
+      case 'Rook':
+        return 'r';
+    }
+  }
 
   async function onPieceSelected(pieceId: string) {
     const piece = pieces.find((p) => p.id === pieceId);
@@ -274,6 +368,19 @@
   {#each possibleMovePositions as { x, y, type }}
     <PossibleMove {board} {x} {y} pieceType={selectedPieceType} onPositionSelected={onMovePositionSelected} {type} />
   {/each}
+  {#if lastMove}
+    <Arrow
+      {board}
+      fromX={lastMove.fromX}
+      fromY={lastMove.fromY}
+      toX={lastMove.toX}
+      toY={lastMove.toY}
+      rescueFromX={lastMove.rescueFromX}
+      rescueFromY={lastMove.rescueFromY}
+      dropToX={lastMove.dropToX}
+      dropToY={lastMove.dropToY}
+    />
+  {/if}
 </div>
 
 <style>

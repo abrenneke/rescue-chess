@@ -5,6 +5,8 @@
   let boardContainer: HTMLDivElement;
   let board: HTMLDivElement;
 
+  export let isSelfPlay;
+
   let boardGrid = Array.from({ length: 8 }, (_, i) =>
     Array.from({ length: 8 }, (_, j) => ((i + j) % 2 === 0 ? 'white' : 'black')),
   );
@@ -36,7 +38,7 @@
     {/each}
   </div>
   <div class="pieces">
-    <ChessPieces {board} />
+    <ChessPieces {isSelfPlay} {board} />
   </div>
 </div>
 

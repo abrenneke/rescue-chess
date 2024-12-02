@@ -2,6 +2,9 @@ export function positionToXy(position: number): [number, number] {
   return [position % 8, Math.floor(position / 8)];
 }
 
+export type PieceType = 'Pawn' | 'Knight' | 'Bishop' | 'Rook' | 'Queen' | 'King';
+export type PawnPromotion = 'Queen' | 'Rook' | 'Bishop' | 'Knight';
+
 export type PieceMove = {
   from: number;
   to: number;
@@ -18,29 +21,42 @@ export type PieceMove = {
       }
     | {
         type: 'NormalAndDrop';
-        value: number;
+        value: {
+          pos: number;
+          promoted_to: PawnPromotion | null;
+        };
       }
     | {
         type: 'Capture';
-        value: 'Pawn' | 'Knight' | 'Bishop' | 'Rook' | 'Queen' | 'King';
+        value: {
+          captured: PieceType;
+          captured_holding: PieceType | null;
+        };
       }
     | {
         type: 'CaptureAndRescue';
         value: {
-          captured_type: 'Pawn' | 'Knight' | 'Bishop' | 'Rook' | 'Queen' | 'King';
+          captured_type: PieceType;
           rescued_pos: number;
+          captured_holding: PieceType | null;
         };
       }
     | {
         type: 'CaptureAndDrop';
         value: {
-          captured_type: 'Pawn' | 'Knight' | 'Bishop' | 'Rook' | 'Queen' | 'King';
+          captured_type: PieceType;
           drop_pos: number;
+          promoted_to: PawnPromotion | null;
+          captured_holding: PieceType | null;
         };
       }
     | {
         type: 'EnPassant';
-        value: number;
+        value: {
+          captured_pos: number;
+          captured: PieceType;
+          captured_holding: PieceType | null;
+        };
       }
     | {
         type: 'Castle';
@@ -51,13 +67,14 @@ export type PieceMove = {
       }
     | {
         type: 'Promotion';
-        value: 'Queen' | 'Rook' | 'Bishop' | 'Knight';
+        value: PawnPromotion;
       }
     | {
         type: 'CapturePromotion';
         value: {
-          captured: 'Pawn' | 'Knight' | 'Bishop' | 'Rook' | 'Queen' | 'King';
-          promoted_to: 'Queen' | 'Rook' | 'Bishop' | 'Knight';
+          captured: PieceType;
+          promoted_to: PawnPromotion;
+          captured_holding: PieceType | null;
         };
       };
 };
@@ -71,6 +88,11 @@ export type SearchResults = {
 };
 
 export type BlackMoveResponse = {
+  results: SearchResults;
+  move_from_whites_perspective: PieceMove;
+};
+
+export type WhiteMoveResponse = {
   results: SearchResults;
   move_from_whites_perspective: PieceMove;
 };

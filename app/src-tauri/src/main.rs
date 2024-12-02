@@ -15,7 +15,8 @@ fn main() {
             commands::reset,
             commands::get_position_fen,
             commands::move_piece,
-            commands::get_black_move
+            commands::get_black_move,
+            commands::get_white_move,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

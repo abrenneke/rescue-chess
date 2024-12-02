@@ -1,14 +1,24 @@
 <script lang="ts">
   import ChessBoard from './lib/ChessBoard.svelte';
   import Controls from './lib/Controls.svelte';
+
+  let isSelfPlay = false;
+
+  function onSelfPlayClicked() {
+    isSelfPlay = !isSelfPlay;
+  }
+
+  function onRestart() {
+    window.location.reload();
+  }
 </script>
 
 <main class="container">
   <div class="board">
-    <ChessBoard />
+    <ChessBoard {isSelfPlay} />
   </div>
   <div class="controls">
-    <Controls />
+    <Controls {isSelfPlay} {onSelfPlayClicked} {onRestart} />
   </div>
 </main>
 

@@ -1,18 +1,11 @@
 use serde::Serialize;
-use std::{
-    borrow::BorrowMut,
-    sync::{Arc, Mutex},
-    thread,
-};
+use std::thread;
 
 use rescue_chess::{
     piece_move::GameType,
     search::{
         alpha_beta::{self, SearchParams},
-        iterative_deepening::IterativeDeepeningData,
-        negamax_hashing,
         search_results::{SearchResults, SearchState},
-        transposition_table::{self, TranspositionTable},
     },
     Color, PieceMove,
 };
@@ -115,22 +108,29 @@ struct BlackMoveResponse {
 #[derive(Clone, Serialize)]
 struct WhiteMoveResponse {
     results: SearchResults,
-    mv: PieceMove,
+    move_from_whites_perspective: PieceMove,
 }
 
 #[command]
 pub fn get_black_move(state: State<GlobalState>, app: tauri::AppHandle) -> Result<(), String> {
     let gs = state.lock().unwrap();
     let transposition_table = gs.transposition_table.clone();
+    let depth = gs.depth;
 
     let from_black = gs.position.inverted();
 
+    println!("Getting black move");
+    println!(
+        "Position\n{}",
+        from_black.to_board_string_with_rank_file_holding()
+    );
+
     thread::spawn(move || -> () {
         let mut transposition_table = transposition_table.lock().unwrap();
-        let mut state = SearchState::new(transposition_table.borrow_mut());
+        let mut state = SearchState::new(&mut transposition_table);
 
         let params = SearchParams {
-            depth: 6,
+            depth,
             game_type: GAME_TYPE,
             ..Default::default()
         };
@@ -151,17 +151,42 @@ pub fn get_black_move(state: State<GlobalState>, app: tauri::AppHandle) -> Resul
     Ok(())
 }
 
-// pub fn get_white_move(state: State<GlobalState>) -> Result<PieceMove, String> {
-//     let gs = state.lock().unwrap();
-//     let from_black = gs.position.inverted();
+#[command]
+pub fn get_white_move(state: State<GlobalState>, app: tauri::AppHandle) -> Result<(), String> {
+    let gs = state.lock().unwrap();
+    let from_white = gs.position.clone();
 
-//     thread::spawn(move || -> () {
-//         let results = alpha_beta::search(&from_black, 4);
-//         let move_from_whites_perspective = results.best_move.inverted();
+    println!("Getting white move");
+    println!(
+        "Position\n{}",
+        gs.position.to_board_string_with_rank_file_holding()
+    );
 
-//         app.emit("white_move", WhiteMoveResponse { results, mv })
-//             .unwrap();
-//     });
+    let transposition_table = gs.transposition_table.clone();
+    let depth = gs.depth;
 
-//     Ok(())
-// }
+    thread::spawn(move || -> () {
+        let mut transposition_table = transposition_table.lock().unwrap();
+        let mut state = SearchState::new(&mut transposition_table);
+
+        let params = SearchParams {
+            depth,
+            game_type: GAME_TYPE,
+            ..Default::default()
+        };
+
+        let results = alpha_beta::search(&from_white, &mut state, params);
+        let move_from_whites_perspective = results.best_move.unwrap();
+
+        app.emit(
+            "white_move",
+            WhiteMoveResponse {
+                results,
+                move_from_whites_perspective,
+            },
+        )
+        .unwrap();
+    });
+
+    Ok(())
+}

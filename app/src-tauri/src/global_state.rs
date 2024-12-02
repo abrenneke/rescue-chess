@@ -23,6 +23,7 @@ impl Deref for GlobalState {
 
 pub struct GlobalStateData {
     pub position: Position,
+    pub depth: u32,
     pub transposition_table: Arc<Mutex<TranspositionTable>>,
 }
 
@@ -30,6 +31,7 @@ impl Default for GlobalStateData {
     fn default() -> Self {
         GlobalStateData {
             position: Position::start_position(),
+            depth: 5,
             transposition_table: Arc::new(Mutex::new(TranspositionTable::new())),
         }
     }
