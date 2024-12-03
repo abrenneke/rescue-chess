@@ -1,8 +1,6 @@
-use std::sync::{Arc, Mutex};
-
 use tracing::trace;
 
-use crate::{search::game_state::GameState, uci::UciEngine, Color, PieceMove, Position};
+use crate::{uci::UciEngine, Color, PieceMove, Position};
 
 use super::CommandHandler;
 
@@ -47,6 +45,7 @@ impl CommandHandler for PositionCommand {
 
             match mv {
                 Ok(mv) => {
+                    println!("applying move: {}", mv);
                     let result = game_state.apply_move(mv);
 
                     trace!("Applied move: {}", move_str);

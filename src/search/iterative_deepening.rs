@@ -10,6 +10,8 @@ use super::{
     transposition_table::TranspositionTable,
 };
 
+pub type OnNewBestMove = dyn Fn(PieceMove, i32) + Send + Sync;
+
 pub struct IterativeDeepeningData {
     pub current_position: Position,
     pub transposition_table: TranspositionTable,
@@ -17,6 +19,8 @@ pub struct IterativeDeepeningData {
     pub best_move: Option<PieceMove>,
     pub best_score: Option<i32>,
     pub previous_pv: Option<PieceMove>,
+
+    pub on_new_best_move: Option<Box<OnNewBestMove>>,
 }
 
 impl IterativeDeepeningData {
@@ -28,6 +32,7 @@ impl IterativeDeepeningData {
             best_move: None,
             best_score: None,
             previous_pv: None,
+            on_new_best_move: None,
         }
     }
 
@@ -92,6 +97,10 @@ impl IterativeDeepeningData {
         state.data.start_time = start_time;
         state.data.time_limit = params_base.time_limit;
         state.data.previous_pv = self.previous_pv;
+
+        if let Some(on_new_best_move) = self.on_new_best_move.as_deref() {
+            state.callbacks.on_new_best_move = Some(on_new_best_move);
+        }
 
         let mut params = params_base.clone();
         params.depth = depth;

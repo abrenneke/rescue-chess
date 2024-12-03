@@ -41,8 +41,12 @@ impl UciEngine {
             UciCommand::Quit => Ok(false),
             UciCommand::SetOption(cmd) => cmd.execute(self),
             UciCommand::Unknown(cmd) => {
+                if cmd.trim().is_empty() {
+                    return Ok(true);
+                }
+
                 error!("Unknown command: {}", cmd);
-                eprintln!("Unknown command: {}", cmd);
+                // eprintln!("Unknown command: {}", cmd);
                 Ok(true)
             }
         }
@@ -331,5 +335,19 @@ mod tests {
             .unwrap();
 
         engine.handle_command(cmd).unwrap();
+    }
+
+    #[test]
+    fn en_passant() {
+        let (mut engine, _capture) = create_test_engine();
+
+        let cmd = "position startpos moves d2d4 d7d5 b1c3 g8f6 g1f3 b8c6 c1f4 e7e6 f3e5 f6e4 e5c6 b7c6 c3e4 d5e4 f4e5 f8d6 e5g7 d8g5 g7h8 g5g8 h8e5 a8b8 a1b1 g8g5 f2f4 e4f3".parse::<UciCommand>().unwrap();
+
+        engine.handle_command(cmd).unwrap();
+
+        let game_state = engine.game_state.lock().unwrap();
+        let pos = &game_state.current_position;
+
+        println!("{}", pos.to_fen());
     }
 }

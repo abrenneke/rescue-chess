@@ -13,7 +13,19 @@ impl CommandHandler for UciCommand {
         writeln!(stdout, "id author Andy Brenneke")?;
 
         // Send options
-        writeln!(stdout, "option name Foo type string default bar")?;
+        writeln!(
+            stdout,
+            "option name Hash type spin default 64 min 1 max 16384"
+        )?;
+        writeln!(
+            stdout,
+            "option name EnableTranspositionTable type check default true"
+        )?;
+        writeln!(stdout, "option name EnableLMR type check default true")?;
+        writeln!(
+            stdout,
+            "option name EnableWindowSearch type check default true"
+        )?;
 
         writeln!(stdout, "uciok")?;
         stdout.flush()?;

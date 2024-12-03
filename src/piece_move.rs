@@ -290,14 +290,16 @@ impl PieceMove {
         // If no moves match, the notation is invalid
         if matching_moves.is_empty() {
             return Err(anyhow::anyhow!(
-                "No piece can make this move: {}. Possible moves are: {}",
+                "No piece can make this move: {}. Possible moves are: {}. Board state\n{}\n{}",
                 parsed.to_algebraic(),
                 position
                     .get_all_legal_moves(game_type)?
                     .iter()
                     .map(|mv| mv.to_string())
                     .collect::<Vec<String>>()
-                    .join(", ")
+                    .join(", "),
+                position.to_board_string_with_rank_file_holding(),
+                position.to_fen()
             ));
         }
 

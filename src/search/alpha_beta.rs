@@ -14,8 +14,8 @@ pub struct SearchResult {
     pub score: i32,
 }
 
-const CHECKMATE: i32 = -1000000;
-const STALEMATE: i32 = 0;
+pub const CHECKMATE: i32 = -1000000;
+pub const STALEMATE: i32 = 0;
 
 #[derive(Debug, Clone)]
 pub struct SearchParams {
@@ -71,6 +71,11 @@ impl std::ops::Neg for SearchResult {
 #[derive(Debug)]
 pub enum Error {
     Timeout,
+}
+
+pub struct ScorePV {
+    pub score: i32,
+    pub pv: Vec<PieceMove>,
 }
 
 pub fn search(
@@ -179,15 +184,15 @@ pub fn search(
     }
 }
 
-struct SearchIteration<'table: 'state, 'state> {
+struct SearchIteration<'table: 'state, 'state, 'a> {
     alpha: i32,
     beta: i32,
     depth: u32,
-    state: &'state mut SearchState<'table>,
+    state: &'state mut SearchState< 'table, 'a>,
     principal_variation: Option<Vec<PieceMove>>,
 }
 
-impl<'a, 'b> std::fmt::Debug for SearchIteration<'a, 'b> {
+impl<'a, 'b, 'c> std::fmt::Debug for SearchIteration<'a, 'b, 'c> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SearchIteration")
             .field("alpha", &self.alpha)
@@ -199,7 +204,11 @@ impl<'a, 'b> std::fmt::Debug for SearchIteration<'a, 'b> {
 }
 
 // Late move reduction
-fn should_reduce_move(mv: &PieceMove, depth: u32, move_index: usize, in_check: bool) -> bool {
+fn should_reduce_move(mv: &PieceMove, depth: u32, move_index: usize, in_check: bool, alpha: i32, beta: i32) -> bool {
+    if alpha > 900_000 || beta > 900_000 || alpha < -900_000 || beta < -900_000 {
+        return false;
+    }
+
     depth >= 3 && // Only reduce at deeper depths
     move_index >= 4 && // Don't reduce first few moves
     !mv.is_capture() && // Don't reduce captures
@@ -262,9 +271,8 @@ pub fn alpha_beta(
     }
 
     // If the position is a checkmate, we should return a very low score.
-    // This is just to prevent the engine from continuing past a king capture.
     if position.is_checkmate(params.game_type).unwrap() {
-        let score = -1000000;
+        let score = CHECKMATE - (depth as i32);
 
         if params.debug_print_verbose {
             trace!(
@@ -436,7 +444,7 @@ fn test_move(
     child.invert();
 
     // Implement Late Move Reduction
-    let mut score = if params.enable_lmr && should_reduce_move(&mv, depth, move_index, in_check) {
+    let mut score_pv: Option<ScorePV> = if params.enable_lmr && should_reduce_move(&mv, depth, move_index, in_check, iteration.alpha, iteration.beta) {
         let reduction = (depth.min(move_index as u32) / 3).max(1);
 
         if params.debug_print_verbose {
@@ -464,7 +472,10 @@ fn test_move(
                 if reduced_score > iteration.alpha {
                     None // Signal that we need a full-depth search
                 } else {
-                    Some(reduced_score)
+                    Some(ScorePV {
+                        score: reduced_score,
+                        pv: reduced_result.principal_variation.unwrap_or_default(),
+                    })
                 }
             }
             Err(e) => return Some(Err(e)),
@@ -474,7 +485,7 @@ fn test_move(
     };
 
     // If LMR was not done or the reduced search beat alpha, do a full-depth search
-    if score.is_none() {
+    if score_pv.is_none() {
         if params.debug_print_verbose {
             trace!(
                 "{}Full-depth search for move: {}",
@@ -496,16 +507,19 @@ fn test_move(
             params,
         ) {
             Ok(result) => {
-                score = Some(-result.score);
+                score_pv = Some(ScorePV {
+                    score: -result.score,
+                    pv: result.principal_variation.unwrap_or_default(),
+                });
             }
             Err(e) => return Some(Err(e)),
         }
     }
 
-    let score = score.unwrap();
+    let score_pv = score_pv.unwrap();
 
     // Rest of the move processing remains the same
-    if score >= iteration.beta {
+    if score_pv.score >= iteration.beta {
         iteration.state.data.pruned += 1;
 
         if params.enable_transposition_table {
@@ -525,7 +539,7 @@ fn test_move(
                 "{}Pruned move: {} (score: {}, beta: {})",
                 "\t".repeat((params.depth - iteration.depth) as usize),
                 mv,
-                score,
+                score_pv.score,
                 iteration.beta,
             );
         }
@@ -536,21 +550,10 @@ fn test_move(
         }));
     }
 
-    if score > iteration.alpha {
-        iteration.alpha = score;
+    if score_pv.score > iteration.alpha {
+        iteration.alpha = score_pv.score;
         let mut principal_variation = vec![mv];
-        if let Ok(result) = alpha_beta(
-            &child,
-            -iteration.beta,
-            -iteration.alpha,
-            iteration.depth - 1,
-            iteration.state,
-            params,
-        ) {
-            if let Some(mut child_pv) = result.principal_variation {
-                principal_variation.append(&mut child_pv);
-            }
-        }
+        principal_variation.extend(score_pv.pv);
         iteration.principal_variation = Some(principal_variation);
 
         if params.debug_print_verbose {
@@ -566,7 +569,9 @@ fn test_move(
         if depth == params.depth {
             iteration.state.data.best_move_so_far = Some(mv);
 
-            println!("Best move so far: {}", mv);
+            if let Some(on_new_best_move) = iteration.state.callbacks.on_new_best_move {
+                on_new_best_move(mv, iteration.alpha);
+            }
         }
     }
 
@@ -575,7 +580,7 @@ fn test_move(
             "{}Move search complete. No beta cutoff: {} (score: {})",
             "\t".repeat((params.depth - iteration.depth) as usize),
             mv,
-            score
+            score_pv.score
         );
     }
 
@@ -815,5 +820,85 @@ pub mod tests {
 
         // White should play Bb5, pinning the knight
         assert_eq!(best_move, "Bb5", "Expected pin with Bb5, got {}", best_move);
+    }
+
+    #[test]
+    fn mate_in_1() {
+        tracing_subscriber::fmt().with_max_level(tracing::Level::TRACE).init();
+
+        let position = Position::parse_from_fen("Q1Q5/P6k/8/5P2/6Q1/6B1/6PP/R3K2R w kq - 0 1").unwrap();
+
+        let mut transposition_table = TranspositionTable::new();
+        let mut state = SearchState::new(&mut transposition_table);
+
+        let params = SearchParams {
+            depth: 4,
+            game_type: GameType::Classic,
+            debug_print_verbose: true,
+            ..Default::default()
+        };
+
+        let result = search(&position, &mut state, params).unwrap();
+        let best_move = result.best_move.unwrap().to_string();
+
+        // White should play Qh8#
+        assert_eq!(best_move, "Qh8", "Expected mate with Qh8, got {}", best_move);
+    }
+
+    fn test_mate(position: &str, expected_move: &str, depth: u32) {
+        let position = Position::parse_from_fen(position).unwrap();
+
+        let mut transposition_table = TranspositionTable::new();
+        let mut state = SearchState::new(&mut transposition_table);
+
+        let params = SearchParams {
+            depth,
+            game_type: GameType::Classic,
+            enable_lmr: false,
+            enable_window_search: false,
+            // enable_transposition_table: false,
+            ..Default::default()
+        };      
+
+        let result = search(&position, &mut state, params).unwrap();
+        let best_move = result.best_move.unwrap().to_string();
+
+        println!("Score: {}", result.score);
+        println!("Principal variation: {:?}", result.principal_variation);
+
+        assert_eq!(best_move, expected_move, "Expected mate with {}, got {}", expected_move, best_move);
+        assert!(result.score >= -CHECKMATE, "Expected mate, got score {}", result.score);
+    }
+
+    #[test]
+    fn mate_in_2() {
+        test_mate("3qr2k/pbpp2pp/1p5N/3Q2b1/2P1P3/P7/1PP2PPP/R4RK1 w - - 0 1", "Qg8", 6);
+    }
+
+    #[test]
+    fn mate_in_2_2() {
+        test_mate("r1bq2k1/ppp2r1p/2np1pNQ/2bNpp2/2B1P3/3P4/PPP2PPP/R3K2R w KQ - 0 1", "Nxf6", 6);
+    }
+
+    #[test]
+    fn mate_in_2_3() {
+        test_mate("r1bk3r/1pp2ppp/pb1p1n2/n2P4/B3P1q1/2Q2N2/PB3PPP/RN3RK1 w - - 0 1", "Qxf6", 6);
+    }
+
+    #[test]
+    fn mate_in_10() {
+        test_mate("2R5/8/4p2K/6r1/5p2/2b5/2k4p/8 b - - 0 1", "Rb8", 10);
+    }
+
+    #[test]
+    #[should_panic]
+    fn opera_mate() {
+        // Not sure about this one
+        test_mate("8/1r3k2/5b2/8/8/p1p5/2K5/1R6 b - - 0 1", "Rxg8", 10);
+    }
+
+    #[test]
+    fn mate_in_5() {
+        test_mate("8/4K3/1P6/2PB1r1n/5p2/pp6/k1p4p/3Q4 w - - 0 1", "Qxc2", 10);
     }
 }

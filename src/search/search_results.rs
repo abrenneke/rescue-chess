@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use crate::PieceMove;
 
-use super::transposition_table::TranspositionTable;
+use super::{iterative_deepening::OnNewBestMove, transposition_table::TranspositionTable};
 
 #[derive(Clone, Serialize)]
 pub struct SearchResults {
@@ -18,10 +18,10 @@ pub struct SearchResults {
     pub principal_variation: Option<Vec<PieceMove>>,
 }
 
-pub struct SearchState<'table> {
+pub struct SearchState<'table, 'a> {
     pub data: SearchStateData,
     pub transposition_table: &'table mut TranspositionTable,
-    pub callbacks: SearchStateCallbacks,
+    pub callbacks: SearchStateCallbacks<'a>,
 }
 
 pub struct SearchStateData {
@@ -35,8 +35,8 @@ pub struct SearchStateData {
     pub previous_pv: Option<PieceMove>,
 }
 
-pub struct SearchStateCallbacks {
-    pub on_new_best_move: Option<Box<dyn FnMut(PieceMove, i32)>>,
+pub struct SearchStateCallbacks<'a> {
+    pub on_new_best_move: Option<&'a OnNewBestMove>,
 }
 
 #[derive(Clone)]
@@ -67,7 +67,7 @@ impl SearchStats {
     }
 }
 
-impl<'a> SearchState<'a> {
+impl<'table, 'a> SearchState<'table, 'a> {
     pub fn to_stats(&self) -> SearchStats {
         SearchStats {
             nodes_searched: self.data.nodes_searched,
@@ -78,8 +78,8 @@ impl<'a> SearchState<'a> {
     }
 }
 
-impl<'a> SearchState<'a> {
-    pub fn new(transposition_table: &'a mut TranspositionTable) -> Self {
+impl<'table, 'a> SearchState<'table, 'a> {
+    pub fn new(transposition_table: &'table mut TranspositionTable) -> Self {
         Self {
             data: SearchStateData {
                 nodes_searched: 0,

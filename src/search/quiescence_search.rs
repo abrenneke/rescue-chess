@@ -7,7 +7,7 @@ use crate::{
 };
 
 use super::{
-    alpha_beta::{Error, SearchParams, SearchResult},
+    alpha_beta::{Error, SearchParams, SearchResult, CHECKMATE},
     search_results::SearchState,
 };
 
@@ -30,12 +30,12 @@ pub fn quiescence_search(
 
         return Ok(SearchResult {
             principal_variation: None,
-            score: -1_000_000,
+            score: CHECKMATE - (depth as i32),
         });
     }
 
     // First, do a standing pat evaluation
-    let stand_pat = evaluate_position(position);
+    let stand_pat = evaluate_position(position, params.game_type);
 
     // Fail-high if standing pat beats beta
     if stand_pat >= beta {

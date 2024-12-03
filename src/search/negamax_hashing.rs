@@ -22,7 +22,7 @@ pub fn negamax_hashing(
     }
 
     if depth == 0 {
-        let result = (None, evaluate_position(position));
+        let result = (None, evaluate_position(position, GameType::Rescue));
         hash_map.insert(position.clone(), result);
         return result;
     }

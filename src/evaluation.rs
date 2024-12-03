@@ -1,6 +1,9 @@
 pub mod square_bonus;
 
-use crate::{piece_move::MoveType, Color, PieceMove, PieceType, Pos, Position};
+use crate::{
+    piece_move::{GameType, MoveType},
+    Color, PieceMove, PieceType, Pos, Position,
+};
 
 pub fn piece_value(piece_type: PieceType) -> i32 {
     match piece_type {
@@ -62,7 +65,7 @@ pub fn order_moves(
     scored_moves.into_iter().map(|sm| sm.mv).collect()
 }
 
-fn score_move(_position: &Position, mv: &PieceMove, prev_best_move: Option<PieceMove>) -> i32 {
+fn score_move(position: &Position, mv: &PieceMove, prev_best_move: Option<PieceMove>) -> i32 {
     let mut score = 0;
 
     // 1. Hash table move from previous iteration
@@ -112,9 +115,16 @@ fn score_move(_position: &Position, mv: &PieceMove, prev_best_move: Option<Piece
         score += 15000;
     }
 
-    // if mv.is_check() {
-    //     score += 7000;
-    // }
+    // Check moves should be prioritized
+    {
+        let mut position = position.clone();
+        position.apply_move(mv.clone()).unwrap();
+        position.invert();
+
+        if position.is_king_in_check().unwrap() {
+            score += 10_000;
+        }
+    }
 
     // 5. Piece-square table bonuses
     // score += get_piece_square_bonus(mv.piece(), mv.to_square());
@@ -126,7 +136,7 @@ fn score_move(_position: &Position, mv: &PieceMove, prev_best_move: Option<Piece
     score
 }
 
-pub fn evaluate_position(board: &Position) -> i32 {
+pub fn evaluate_position(board: &Position, game_type: GameType) -> i32 {
     let mut score = 0;
 
     let inverted = board.inverted();
@@ -180,8 +190,8 @@ pub fn evaluate_position(board: &Position) -> i32 {
     score += white_king_safety - black_king_safety;
 
     // Mobility evaluation
-    let white_mobility = evaluate_mobility(board);
-    let black_mobility = evaluate_mobility(&inverted);
+    let white_mobility = evaluate_mobility(board, game_type);
+    let black_mobility = evaluate_mobility(&inverted, game_type);
     score += white_mobility - black_mobility;
 
     score
@@ -303,15 +313,14 @@ fn evaluate_king_safety(position: &Position) -> i32 {
     white_score
 }
 
-fn evaluate_mobility(position: &Position) -> i32 {
+fn evaluate_mobility(position: &Position, game_type: GameType) -> i32 {
     let mut white_score = 0;
 
-    // Calculate legal moves for each piece
-    for piece in position.white_pieces.iter() {
-        let moves = piece.get_legal_moves(position);
-        let move_count = moves.count() as i32;
+    let legal_moves = position.get_all_legal_moves(game_type).unwrap();
 
-        let mobility_bonus = mobility_bonus(piece.piece_type) * move_count;
+    for mv in legal_moves {
+        let piece = position.get_piece_at(mv.from).unwrap();
+        let mobility_bonus = mobility_bonus(piece.piece_type);
 
         white_score += mobility_bonus;
     }
@@ -724,8 +733,8 @@ mod tests {
     #[test]
     fn test_evaluate_mobility_starting_position() {
         let position = Position::start_position();
-        let white_score = evaluate_mobility(&position);
-        let black_score = evaluate_mobility(&position.inverted());
+        let white_score = evaluate_mobility(&position, GameType::Classic);
+        let black_score = evaluate_mobility(&position.inverted(), GameType::Classic);
 
         // In starting position:
         // Knights: 2 possible moves each (4 total) * 4 points = 16
@@ -750,7 +759,7 @@ mod tests {
         );
         position.calc_changes(true);
 
-        let white_score = evaluate_mobility(&position);
+        let white_score = evaluate_mobility(&position, GameType::Classic);
         // Knight in center has 8 possible moves * 4 points = 32
         assert_eq!(white_score, 32);
     }
@@ -771,7 +780,7 @@ mod tests {
         );
         position.calc_changes(true);
 
-        let white_score = evaluate_mobility(&position);
+        let white_score = evaluate_mobility(&position, GameType::Classic);
         // Bishop in center has 13 possible moves * 3 points = 39
         assert_eq!(white_score, 39);
     }
@@ -792,7 +801,7 @@ mod tests {
         );
         position.calc_changes(true);
 
-        let white_score = evaluate_mobility(&position);
+        let white_score = evaluate_mobility(&position, GameType::Classic);
         // Rook in center has 14 possible moves * 2 points = 28
         assert_eq!(white_score, 28);
     }
@@ -813,7 +822,7 @@ mod tests {
         );
         position.calc_changes(true);
 
-        let white_score = evaluate_mobility(&position);
+        let white_score = evaluate_mobility(&position, GameType::Classic);
         // Queen in center has 27 possible moves * 1 point = 27
         assert_eq!(white_score, 27);
     }
@@ -823,7 +832,7 @@ mod tests {
         // Position with pieces blocked by friendly pieces
         let position = Position::parse_from_fen("8/8/8/8/8/8/PPPPP3/RPBQP3 w - - 0 1").unwrap();
 
-        let white_score = evaluate_mobility(&position);
+        let white_score = evaluate_mobility(&position, GameType::Classic);
         // Only pawns can move (1 square each) * 0 points = 0
         assert_eq!(white_score, 0);
     }
@@ -852,7 +861,7 @@ mod tests {
         );
         position.calc_changes(true);
 
-        let white_score = evaluate_mobility(&position);
+        let white_score = evaluate_mobility(&position, GameType::Classic);
         // Knight: 8 moves * 4 points = 32
         // Bishop: 13 moves * 3 points = 39
         // Total = 71
@@ -882,7 +891,7 @@ mod tests {
         );
         position.calc_changes(true);
 
-        let white_score = evaluate_mobility(&position);
+        let white_score = evaluate_mobility(&position, GameType::Classic);
         // King: 8 moves * 0 points = 0
         // Pawn: 1 move * 0 points = 0
         // Total = 0
@@ -896,7 +905,7 @@ mod tests {
             Position::parse_from_fen("rnbqkbnr/pppppppp/8/8/8/N7/PPPPPPPP/R1BQKBNR w KQkq - 0 1")
                 .unwrap();
 
-        let score = evaluate_position(&position);
+        let score = evaluate_position(&position, GameType::Classic);
 
         assert!(score < 20);
     }
@@ -908,7 +917,7 @@ mod tests {
             Position::parse_from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1")
                 .unwrap();
 
-        let score = evaluate_position(&position);
+        let score = evaluate_position(&position, GameType::Classic);
 
         dbg!(score);
         assert!(score > 20);
@@ -918,7 +927,7 @@ mod tests {
             Position::parse_from_fen("rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR w KQkq - 0 1")
                 .unwrap();
 
-        let score = evaluate_position(&position);
+        let score = evaluate_position(&position, GameType::Classic);
 
         assert!(score > 20);
     }

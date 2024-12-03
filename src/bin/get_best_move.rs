@@ -29,11 +29,24 @@ struct Cli {
     #[arg(long)]
     pub print_valid_moves: bool,
 
+    #[arg(short = 'v', long)]
+    pub verbose: bool,
+
     pub fen: String,
 }
 
 fn main() {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::TRACE)
+        .with_level(false)
+        .without_time()
+        .with_file(false)
+        .with_line_number(false)
+        .with_thread_names(false)
+        .with_thread_ids(false)
+        .with_ansi(false)
+        .with_target(false)
+        .init();
 
     let args = Cli::parse();
 
@@ -74,7 +87,7 @@ fn main() {
                 game_type,
                 // debug_print: true,
                 // debug_print_all_moves: true,
-                // debug_print_verbose: true,
+                debug_print_verbose: args.verbose,
                 // enable_transposition_table: false,
                 enable_lmr: false,
                 // enable_window_search: false,

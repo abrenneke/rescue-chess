@@ -27,6 +27,8 @@ pub struct ParsedMove {
     pub rescue_drop: Option<RescueOrDrop>,
     pub rescue_drop_file: Option<u8>,
     pub rescue_drop_rank: Option<u8>,
+
+    #[allow(dead_code)]
     pub promotion_to: Option<PieceType>,
 }
 

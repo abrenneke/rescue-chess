@@ -6,7 +6,7 @@ use crate::{
 
 pub fn negamax(position: &Position, depth: u32) -> (Option<PieceMove>, i32) {
     if depth == 0 {
-        return (None, evaluate_position(position));
+        return (None, evaluate_position(position, GameType::Rescue));
     }
 
     let mut max = i32::MIN;

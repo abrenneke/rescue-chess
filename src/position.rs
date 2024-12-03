@@ -184,6 +184,10 @@ impl Position {
 
         self.true_active_color = self.true_active_color.invert();
 
+        if let Some(en_passant) = self.en_passant {
+            self.en_passant = Some(en_passant.invert());
+        }
+
         self.calc_changes(true);
     }
 
@@ -1280,8 +1284,8 @@ impl Position {
     fn try_en_passant_set(&mut self, mv: PieceMove) {
         let piece = self.get_piece_at(mv.to).unwrap();
 
-        if piece.piece_type == PieceType::Pawn && mv.from.get_row() == 1 && mv.to.get_row() == 3 {
-            self.en_passant = Some(Pos::xy(mv.from.get_col(), 2));
+        if piece.piece_type == PieceType::Pawn && mv.from.get_row() == 6 && mv.to.get_row() == 4 {
+            self.en_passant = Some(Pos::xy(mv.from.get_col(), 5));
         } else {
             self.en_passant = None;
         }

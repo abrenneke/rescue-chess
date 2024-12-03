@@ -31,3 +31,6 @@ name = "uci"
 
 [profile.release]
 debug = true
+
+[profile.test]
+opt-level = 3

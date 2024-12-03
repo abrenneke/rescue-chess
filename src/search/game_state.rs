@@ -5,7 +5,8 @@ use tracing::trace;
 use crate::{piece_move::GameType, Color, PieceMove, Position};
 
 use super::{
-    alpha_beta::SearchParams, iterative_deepening::IterativeDeepeningData,
+    alpha_beta::SearchParams,
+    iterative_deepening::{IterativeDeepeningData, OnNewBestMove},
     search_results::SearchStats,
 };
 
@@ -125,6 +126,10 @@ impl GameState {
             Color::White => self.previous_scores.0 = Some(score),
             Color::Black => self.previous_scores.1 = Some(score),
         }
+    }
+
+    pub fn set_on_new_best_move_handler(&mut self, handler: Box<OnNewBestMove>) {
+        self.iterative_deepening_data.on_new_best_move = Some(handler);
     }
 
     pub fn search_and_apply(&mut self) -> Result<(PieceMove, SearchStats), anyhow::Error> {

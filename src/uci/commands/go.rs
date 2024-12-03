@@ -1,5 +1,3 @@
-use std::io::Write;
-
 use tracing::trace;
 
 use crate::{uci::UciEngine, Color};
@@ -37,11 +35,15 @@ impl CommandHandler for GoCommand {
         }
 
         let game_state = engine.game_state.clone();
-        let stdout = engine.stdout.clone();
 
         std::thread::spawn(move || {
             let mut game_state = game_state.lock().unwrap();
-            let mut stdout = stdout.lock().unwrap();
+
+            game_state.set_on_new_best_move_handler(Box::new(move |best_move, score| {
+                trace!("New best move: {} with score {}", best_move, score);
+                println!("info score cp {}", score);
+                println!("info pv {}", best_move.to_uci());
+            }));
 
             // Perform search
             match game_state.search_and_apply() {
@@ -51,14 +53,13 @@ impl CommandHandler for GoCommand {
                     }
 
                     trace!("Best move: {}", best_move);
-                    writeln!(stdout, "bestmove {}", best_move.to_uci()).unwrap();
+                    println!("bestmove {}", best_move.to_uci());
                 }
                 Err(e) => {
                     trace!("Error searching: {}", e);
-                    writeln!(stdout, "bestmove 0000").unwrap();
+                    println!("bestmove 0000")
                 }
             }
-            stdout.flush().unwrap();
         });
 
         Ok(true)
