@@ -38,8 +38,13 @@ impl CommandHandler for GoCommand {
 
         std::thread::spawn(move || {
             let mut game_state = game_state.lock().unwrap();
+            let is_black = game_state.current_turn == Color::Black;
 
-            game_state.set_on_new_best_move_handler(Box::new(move |best_move, score| {
+            game_state.set_on_new_best_move_handler(Box::new(move |mut best_move, score| {
+                if is_black {
+                    best_move = best_move.inverted();
+                }
+
                 trace!("New best move: {} with score {}", best_move, score);
                 println!("info score cp {}", score);
                 println!("info pv {}", best_move.to_uci());

@@ -26,6 +26,10 @@ impl CommandHandler for UciCommand {
             stdout,
             "option name EnableWindowSearch type check default true"
         )?;
+        writeln!(
+            stdout,
+            "option name EnableKillerMoves type check default true"
+        )?;
 
         writeln!(stdout, "uciok")?;
         stdout.flush()?;

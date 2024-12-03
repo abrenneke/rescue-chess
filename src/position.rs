@@ -437,6 +437,7 @@ impl Position {
             // let orig = position.clone();
 
             let prev_en_passant = position.en_passant;
+            let prev_castling_rights = position.castling_rights.clone();
             position.apply_move(mv)?;
 
             if !position.is_king_in_check()? {
@@ -445,6 +446,7 @@ impl Position {
 
             position.unapply_move(mv)?;
             position.en_passant = prev_en_passant;
+            position.castling_rights = prev_castling_rights;
 
             // if orig.to_board_string_with_rank_file_holding()
             //     != position.to_board_string_with_rank_file_holding()
@@ -1066,21 +1068,27 @@ impl Position {
     fn try_remove_castling_rights(&mut self, mv: PieceMove) {
         // If a rook moved from a corner, remove, if a king moved from its start position, remove both
         if mv.piece_type == PieceType::Rook && mv.from == Pos::from_algebraic("a1").unwrap() {
-            self.castling_rights.white_queen_side = false;
+            if self.true_active_color == Color::White {
+                self.castling_rights.white_queen_side = false;
+            } else {
+                self.castling_rights.black_queen_side = false;
+            }
         } else if mv.piece_type == PieceType::Rook && mv.from == Pos::from_algebraic("h1").unwrap()
         {
-            self.castling_rights.white_king_side = false;
-        } else if mv.piece_type == PieceType::King && mv.from == Pos::from_algebraic("e1").unwrap()
+            if self.true_active_color == Color::White {
+                self.castling_rights.white_king_side = false;
+            } else {
+                self.castling_rights.black_king_side = false;
+            }
+        } else if mv.piece_type == PieceType::King
+            && mv.from == Pos::from_algebraic("e1").unwrap()
+            && self.true_active_color == Color::White
         {
             self.castling_rights.white_king_side = false;
             self.castling_rights.white_queen_side = false;
-        } else if mv.piece_type == PieceType::Rook && mv.from == Pos::from_algebraic("a8").unwrap()
-        {
-            self.castling_rights.black_queen_side = false;
-        } else if mv.piece_type == PieceType::Rook && mv.from == Pos::from_algebraic("h8").unwrap()
-        {
-            self.castling_rights.black_king_side = false;
-        } else if mv.piece_type == PieceType::King && mv.from == Pos::from_algebraic("e8").unwrap()
+        } else if mv.piece_type == PieceType::King
+            && mv.from == Pos::from_algebraic("d1").unwrap()
+            && self.true_active_color == Color::Black
         {
             self.castling_rights.black_king_side = false;
             self.castling_rights.black_queen_side = false;
@@ -1276,8 +1284,6 @@ impl Position {
             }
         }
 
-        self.try_readd_castling_rights(mv);
-
         Ok(())
     }
 
@@ -1288,30 +1294,6 @@ impl Position {
             self.en_passant = Some(Pos::xy(mv.from.get_col(), 5));
         } else {
             self.en_passant = None;
-        }
-    }
-
-    fn try_readd_castling_rights(&mut self, mv: PieceMove) {
-        // If a rook moved from a corner, remove, if a king moved from its start position, remove both
-        if mv.piece_type == PieceType::Rook && mv.from == Pos::from_algebraic("a1").unwrap() {
-            self.castling_rights.white_queen_side = true;
-        } else if mv.piece_type == PieceType::Rook && mv.from == Pos::from_algebraic("h1").unwrap()
-        {
-            self.castling_rights.white_king_side = true;
-        } else if mv.piece_type == PieceType::King && mv.from == Pos::from_algebraic("e1").unwrap()
-        {
-            self.castling_rights.white_king_side = true;
-            self.castling_rights.white_queen_side = true;
-        } else if mv.piece_type == PieceType::Rook && mv.from == Pos::from_algebraic("a8").unwrap()
-        {
-            self.castling_rights.black_queen_side = true;
-        } else if mv.piece_type == PieceType::Rook && mv.from == Pos::from_algebraic("h8").unwrap()
-        {
-            self.castling_rights.black_king_side = true;
-        } else if mv.piece_type == PieceType::King && mv.from == Pos::from_algebraic("e8").unwrap()
-        {
-            self.castling_rights.black_king_side = true;
-            self.castling_rights.black_queen_side = true;
         }
     }
 

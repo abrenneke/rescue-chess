@@ -345,4 +345,23 @@ mod tests {
 
         println!("{}", pos.to_fen());
     }
+
+    #[test]
+    fn cannot_castle() {
+        let (mut engine, _capture) = create_test_engine();
+
+        let cmd = "position startpos moves e2e4 e7e5 g1f3 b8c6 b1c3 g8f6 f1b5 c6d4 f3e5 d8e7 c3d5 f6d5 c2c3 d4b5 e4d5 e7e5 d1e2 e5e2 e1e2 b5d6 h1e1 f8e7 e2f1 d6c4 b2b3 c4b6 d5d6 c7d6 c1a3 e8d8 e1e7 d8e7 a1e1 e7d8 a3d6 h7h5 d6e7 d8c7 e7g5 c7c6 a2a4 d7d5 e1e7 c8e6 g5f4 b6d7 b3b4".parse::<UciCommand>().unwrap();
+
+        engine.handle_command(cmd).unwrap();
+
+        let mut game_state = engine.game_state.lock().unwrap();
+
+        game_state.search_depth = 10;
+
+        let (best_move, _) = game_state.search_and_apply().unwrap();
+
+        println!("Best move: {}", best_move);
+
+        assert!(best_move.to_string() != "Kb1");
+    }
 }

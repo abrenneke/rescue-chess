@@ -1,3 +1,5 @@
+use tracing::trace;
+
 use crate::uci::UciEngine;
 
 use super::CommandHandler;
@@ -12,6 +14,9 @@ pub struct SetOptionCommand {
 impl CommandHandler for SetOptionCommand {
     fn execute(&self, engine: &mut UciEngine) -> std::io::Result<bool> {
         let mut game_state = engine.game_state.lock().unwrap();
+
+        trace!("Setting option: {} = {:?}", self.name, self.value);
+
         match self.name.as_str() {
             "EnableLMR" => {
                 game_state.features.enable_lmr = self.value.as_deref() == Some("true");
