@@ -5,7 +5,7 @@ use tracing::trace;
 use crate::{piece_move::GameType, Color, PieceMove, Position};
 
 use super::{
-    alpha_beta::SearchParams,
+    alpha_beta::{Features, SearchParams},
     iterative_deepening::{IterativeDeepeningData, OnNewBestMove},
     search_results::SearchStats,
 };
@@ -38,11 +38,7 @@ pub struct GameState {
 
     pub debug_logs_verbose: bool,
 
-    pub enable_transposition_table: bool,
-
-    pub enable_lmr: bool,
-
-    pub enable_window_search: bool,
+    pub features: Features,
 
     pub time_limit_ms: u64,
 }
@@ -60,9 +56,7 @@ impl GameState {
             iterative_deepening_data: IterativeDeepeningData::new(),
             game_type: GameType::Classic,
             debug_logs_verbose: false,
-            enable_transposition_table: true,
-            enable_lmr: true,
-            enable_window_search: true,
+            features: Features::default(),
             time_limit_ms: 5_000,
         };
 
@@ -100,6 +94,7 @@ impl GameState {
             .or_insert(0) += 1;
 
         self.num_plies += 1;
+        self.iterative_deepening_data.ply = self.num_plies;
 
         self.current_turn = self.current_turn.invert();
 
@@ -138,9 +133,7 @@ impl GameState {
             game_type: self.game_type,
             previous_score: self.previous_score(self.current_turn),
             debug_print: true,
-            enable_window_search: self.enable_window_search,
-            enable_transposition_table: self.enable_transposition_table,
-            enable_lmr: self.enable_lmr,
+            features: self.features,
             debug_print_verbose: self.debug_logs_verbose,
             time_limit: self.time_limit_ms,
             ..Default::default()

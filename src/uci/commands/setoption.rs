@@ -14,13 +14,17 @@ impl CommandHandler for SetOptionCommand {
         let mut game_state = engine.game_state.lock().unwrap();
         match self.name.as_str() {
             "EnableLMR" => {
-                game_state.enable_lmr = self.value.as_deref() == Some("true");
+                game_state.features.enable_lmr = self.value.as_deref() == Some("true");
             }
             "EnableTranspositionTable" => {
-                game_state.enable_transposition_table = self.value.as_deref() == Some("true");
+                game_state.features.enable_transposition_table =
+                    self.value.as_deref() == Some("true");
             }
             "EnableWindowSearch" => {
-                game_state.enable_window_search = self.value.as_deref() == Some("true");
+                game_state.features.enable_window_search = self.value.as_deref() == Some("true");
+            }
+            "EnableKillerMoves" => {
+                game_state.features.enable_killer_moves = self.value.as_deref() == Some("true");
             }
             // Add other options as needed
             _ => eprintln!("Unknown option: {}", self.name),

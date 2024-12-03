@@ -17,12 +17,7 @@ pub struct UciEngine {
 impl UciEngine {
     pub fn new() -> Self {
         Self {
-            game_state: Arc::new(Mutex::new(GameState {
-                enable_lmr: true,
-                enable_transposition_table: true,
-                enable_window_search: true,
-                ..Default::default()
-            })),
+            game_state: Arc::new(Mutex::new(GameState::default())),
             stdout: Arc::new(Mutex::new(Box::new(io::stdout()))),
         }
     }

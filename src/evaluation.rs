@@ -2,6 +2,7 @@ pub mod square_bonus;
 
 use crate::{
     piece_move::{GameType, MoveType},
+    search::{alpha_beta::SearchParams, search_results::SearchState},
     Color, PieceMove, PieceType, Pos, Position,
 };
 
@@ -50,11 +51,14 @@ pub fn order_moves(
     position: &Position,
     moves: Vec<PieceMove>,
     prev_best_move: Option<PieceMove>,
+    state: &SearchState,
+    ply: usize,
+    params: &SearchParams,
 ) -> Vec<PieceMove> {
     let mut scored_moves: Vec<ScoredMove> = moves
         .into_iter()
         .map(|mv| {
-            let score = score_move(position, &mv, prev_best_move);
+            let score = score_move(position, &mv, prev_best_move, state, ply, params);
             ScoredMove { score, mv }
         })
         .collect();
@@ -65,7 +69,14 @@ pub fn order_moves(
     scored_moves.into_iter().map(|sm| sm.mv).collect()
 }
 
-fn score_move(position: &Position, mv: &PieceMove, prev_best_move: Option<PieceMove>) -> i32 {
+fn score_move(
+    position: &Position,
+    mv: &PieceMove,
+    prev_best_move: Option<PieceMove>,
+    state: &SearchState,
+    ply: usize,
+    params: &SearchParams,
+) -> i32 {
     let mut score = 0;
 
     // 1. Hash table move from previous iteration
@@ -97,6 +108,16 @@ fn score_move(position: &Position, mv: &PieceMove, prev_best_move: Option<PieceM
         score -= piece_value(mv.piece_type) * 10;
     }
 
+    if params.features.enable_killer_moves {
+        let killers = state.killer_moves.get_killers(ply);
+        if killers[0].as_ref() == Some(mv) {
+            return 19000; // First killer move
+        }
+        if killers[1].as_ref() == Some(mv) {
+            return 18000; // Second killer move
+        }
+    }
+
     // Central pawn pushes in opening/middlegame
     if mv.piece_type == PieceType::Pawn {
         let to_col = mv.to.get_col();
@@ -105,10 +126,6 @@ fn score_move(position: &Position, mv: &PieceMove, prev_best_move: Option<PieceM
             score += 6000; // High but below captures
         }
     }
-
-    // 3. Killer moves (moves that caused beta cutoffs at the same ply in other branches)
-    // This would require storing killer moves in the search state
-    // score += check_if_killer_move(mv) * 9000;
 
     // 4. Special moves
     if let MoveType::Promotion(_) = mv.move_type {

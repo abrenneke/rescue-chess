@@ -19,6 +19,7 @@ pub struct IterativeDeepeningData {
     pub best_move: Option<PieceMove>,
     pub best_score: Option<i32>,
     pub previous_pv: Option<PieceMove>,
+    pub ply: usize,
 
     pub on_new_best_move: Option<Box<OnNewBestMove>>,
 }
@@ -33,6 +34,7 @@ impl IterativeDeepeningData {
             best_score: None,
             previous_pv: None,
             on_new_best_move: None,
+            ply: 0,
         }
     }
 
@@ -54,7 +56,7 @@ impl IterativeDeepeningData {
                 break;
             }
 
-            let search_results = self.search_at_depth(depth, start_time, &params);
+            let search_results = self.search_at_depth(depth, start_time, &params, self.ply);
 
             match search_results {
                 Ok(search_results) => {
@@ -92,6 +94,7 @@ impl IterativeDeepeningData {
         depth: u32,
         start_time: Instant,
         params_base: &SearchParams,
+        ply: usize,
     ) -> Result<SearchResults, alpha_beta::Error> {
         let mut state = SearchState::new(&mut self.transposition_table);
         state.data.start_time = start_time;
@@ -105,7 +108,7 @@ impl IterativeDeepeningData {
         let mut params = params_base.clone();
         params.depth = depth;
 
-        let results = alpha_beta::search(&self.current_position, &mut state, params);
+        let results = alpha_beta::search(&self.current_position, &mut state, params, ply);
 
         self.stats.add(state.to_stats());
 

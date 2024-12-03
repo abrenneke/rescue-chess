@@ -4,7 +4,10 @@ use serde::Serialize;
 
 use crate::PieceMove;
 
-use super::{iterative_deepening::OnNewBestMove, transposition_table::TranspositionTable};
+use super::{
+    iterative_deepening::OnNewBestMove, killer_moves::KillerMoves,
+    transposition_table::TranspositionTable,
+};
 
 #[derive(Clone, Serialize)]
 pub struct SearchResults {
@@ -22,6 +25,7 @@ pub struct SearchState<'table, 'a> {
     pub data: SearchStateData,
     pub transposition_table: &'table mut TranspositionTable,
     pub callbacks: SearchStateCallbacks<'a>,
+    pub killer_moves: KillerMoves,
 }
 
 pub struct SearchStateData {
@@ -95,6 +99,7 @@ impl<'table, 'a> SearchState<'table, 'a> {
             callbacks: SearchStateCallbacks {
                 on_new_best_move: None,
             },
+            killer_moves: KillerMoves::new(64),
         }
     }
 }

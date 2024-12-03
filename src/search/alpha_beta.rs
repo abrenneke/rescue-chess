@@ -32,9 +32,26 @@ pub struct SearchParams {
     pub previous_score: Option<i32>,
     pub window_size: i32,
 
+    pub features: Features,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Features {
     pub enable_transposition_table: bool,
     pub enable_lmr: bool,
     pub enable_window_search: bool,
+    pub enable_killer_moves: bool,
+}
+
+impl Default for Features {
+    fn default() -> Self {
+        Self {
+            enable_transposition_table: true,
+            enable_lmr: true,
+            enable_window_search: true,
+            enable_killer_moves: true,
+        }
+    }
 }
 
 impl Default for SearchParams {
@@ -50,9 +67,7 @@ impl Default for SearchParams {
             debug_print_all_moves: false,
             previous_score: None,
             window_size: 50,
-            enable_transposition_table: true,
-            enable_lmr: true,
-            enable_window_search: true,
+            features: Features::default(),
         }
     }
 }
@@ -82,6 +97,7 @@ pub fn search(
     position: &Position,
     state: &mut SearchState,
     params: SearchParams,
+    ply: usize
 ) -> Result<SearchResults, Error> {
     let mut alpha = match params.previous_score {
         Some(score) => score - params.window_size,
@@ -95,7 +111,7 @@ pub fn search(
 
     let mut failures = 0;
 
-    if !params.enable_window_search {
+    if !params.features.enable_window_search {
         alpha = -params.initial_bound;
         beta = params.initial_bound;
     }
@@ -121,7 +137,7 @@ pub fn search(
         alpha = alpha.max(-params.initial_bound);
         beta = beta.min(params.initial_bound);
 
-        match alpha_beta(position, alpha, beta, params.depth, state, &params) {
+        match alpha_beta(position, alpha, beta, params.depth, state, &params, ply) {
             Ok(result) => {
                 if let Some(pv) = result.principal_variation {
                     if !pv.is_empty() {
@@ -145,7 +161,7 @@ pub fn search(
             Err(Error::Timeout) => return Err(Error::Timeout),
         }
 
-        if !params.enable_window_search {
+        if !params.features.enable_window_search {
             panic!("Search failed to find a score within window");
         }
 
@@ -228,12 +244,13 @@ pub fn alpha_beta(
     depth: u32,
     state: &mut SearchState,
     params: &SearchParams,
+    ply: usize,
 ) -> Result<SearchResult, Error> {
     let original_alpha = alpha;
 
     // If we have already searched this position to the same depth or greater,
     // we can use the cached result directly.
-    if params.enable_transposition_table {
+    if params.features.enable_transposition_table {
         if let Some(entry) = state
             .transposition_table
             .try_get(position, depth, alpha, beta)
@@ -266,8 +283,8 @@ pub fn alpha_beta(
     // Increment the total number of nodes searched.
     state.data.nodes_searched += 1;
 
-    if state.data.nodes_searched % 1000000 == 0 {
-        trace!("Nodes searched: {}", state.data.nodes_searched);
+    if state.data.nodes_searched % 1_000_000 == 0 {
+        trace!("Nodes searched: {}M", state.data.nodes_searched / 1_000_000);
     }
 
     // If the position is a checkmate, we should return a very low score.
@@ -334,7 +351,7 @@ pub fn alpha_beta(
     }
 
     let prev_best_move = state.data.previous_pv;
-    let ordered_moves = order_moves(position, moves, prev_best_move);
+    let ordered_moves = order_moves(position, moves, prev_best_move, state, ply, params);
 
     let mut iteration = SearchIteration {
         alpha,
@@ -355,7 +372,7 @@ pub fn alpha_beta(
     }
 
     for (move_index, mv) in ordered_moves.iter().enumerate() {
-        if let Some(result) = test_move(*mv, position, &mut iteration, params, depth, move_index) {
+        if let Some(result) = test_move(*mv, position, &mut iteration, params, depth, move_index, ply) {
             return result;
         }
     }
@@ -387,7 +404,7 @@ pub fn alpha_beta(
         NodeType::Exact
     };
 
-    if params.enable_transposition_table {
+    if params.features.enable_transposition_table {
         if let Some(principal_variation) = &principal_variation {
             iteration.state.transposition_table.insert(
                 position.clone(),
@@ -415,6 +432,7 @@ fn test_move(
     params: &SearchParams,
     depth: u32,
     move_index: usize,
+    ply: usize,
 ) -> Option<Result<SearchResult, Error>> {
     if params.debug_print_verbose {
         trace!(
@@ -444,7 +462,7 @@ fn test_move(
     child.invert();
 
     // Implement Late Move Reduction
-    let mut score_pv: Option<ScorePV> = if params.enable_lmr && should_reduce_move(&mv, depth, move_index, in_check, iteration.alpha, iteration.beta) {
+    let mut score_pv: Option<ScorePV> = if params.features.enable_lmr && should_reduce_move(&mv, depth, move_index, in_check, iteration.alpha, iteration.beta) {
         let reduction = (depth.min(move_index as u32) / 3).max(1);
 
         if params.debug_print_verbose {
@@ -463,6 +481,7 @@ fn test_move(
             iteration.depth - 1 - reduction,
             iteration.state,
             params,
+            ply + 1,
         );
 
         match result {
@@ -505,6 +524,7 @@ fn test_move(
             iteration.depth - 1,
             iteration.state,
             params,
+            ply + 1,
         ) {
             Ok(result) => {
                 score_pv = Some(ScorePV {
@@ -522,7 +542,11 @@ fn test_move(
     if score_pv.score >= iteration.beta {
         iteration.state.data.pruned += 1;
 
-        if params.enable_transposition_table {
+        if params.features.enable_killer_moves {
+            iteration.state.killer_moves.add_killer(mv, ply);
+        }
+
+        if params.features.enable_transposition_table {
             iteration.state.transposition_table.insert(
                 position.clone(),
                 TranspositionTableEntry {
@@ -612,7 +636,7 @@ pub mod tests {
         };
 
         // Search to depth 4 which should be enough to detect the checkmate threat
-        let result = search(&position, &mut state, params).unwrap();
+        let result = search(&position, &mut state, params, 0).unwrap();
         let best_move = result.best_move.unwrap().inverted().to_string();
 
         trace!(
@@ -663,7 +687,7 @@ pub mod tests {
             ..Default::default()
         };
 
-        let result = search(&position, &mut state, params).unwrap();
+        let result = search(&position, &mut state, params, 0).unwrap();
         assert!(position.is_checkmate(GameType::Classic).unwrap());
         assert_eq!(result.score, -1000000);
         assert!(result.best_move.is_none());
@@ -691,7 +715,7 @@ pub mod tests {
 
             dbg!(position.get_all_legal_moves(GameType::Classic)).unwrap();
 
-            let result = search(&position, &mut state, params).unwrap();
+            let result = search(&position, &mut state, params, 0).unwrap();
             let best_move = result.best_move.unwrap().to_string();
 
             trace!(
@@ -741,7 +765,7 @@ pub mod tests {
                 ..Default::default()
             };
 
-            let result = search(&position, &mut state, params).unwrap();
+            let result = search(&position, &mut state, params, 0).unwrap();
 
             let best_move = result.best_move.unwrap().to_string();
 
@@ -789,7 +813,7 @@ pub mod tests {
             ..Default::default()
         };
 
-        let result = search(&position, &mut state, params).unwrap();
+        let result = search(&position, &mut state, params, 0).unwrap();
         let best_move = result.best_move.unwrap().to_string();
 
         // White should play Nf6+, forking king and rook
@@ -815,7 +839,7 @@ pub mod tests {
             ..Default::default()
         };
 
-        let result = search(&position, &mut state, params).unwrap();
+        let result = search(&position, &mut state, params, 0).unwrap();
         let best_move = result.best_move.unwrap().to_string();
 
         // White should play Bb5, pinning the knight
@@ -838,7 +862,7 @@ pub mod tests {
             ..Default::default()
         };
 
-        let result = search(&position, &mut state, params).unwrap();
+        let result = search(&position, &mut state, params, 0).unwrap();
         let best_move = result.best_move.unwrap().to_string();
 
         // White should play Qh8#
@@ -854,13 +878,16 @@ pub mod tests {
         let params = SearchParams {
             depth,
             game_type: GameType::Classic,
-            enable_lmr: false,
-            enable_window_search: false,
-            // enable_transposition_table: false,
+            features: Features {
+                enable_lmr: false,
+                enable_window_search: false,
+                // enable_transposition_table: false,
+                ..Default::default()
+            },
             ..Default::default()
         };      
 
-        let result = search(&position, &mut state, params).unwrap();
+        let result = search(&position, &mut state, params, 0).unwrap();
         let best_move = result.best_move.unwrap().to_string();
 
         println!("Score: {}", result.score);

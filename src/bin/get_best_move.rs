@@ -2,7 +2,7 @@ use clap::Parser;
 use rescue_chess::{
     piece_move::GameType,
     search::{
-        alpha_beta::{self, SearchParams},
+        alpha_beta::{self, Features, SearchParams},
         search_results::SearchState,
         transposition_table::TranspositionTable,
     },
@@ -89,12 +89,14 @@ fn main() {
                 // debug_print_all_moves: true,
                 debug_print_verbose: args.verbose,
                 // enable_transposition_table: false,
-                enable_lmr: false,
+                features: Features {
+                    ..Default::default()
+                },
                 // enable_window_search: false,
                 ..Default::default()
             };
 
-            let result = alpha_beta::search(&position, &mut state, params).unwrap();
+            let result = alpha_beta::search(&position, &mut state, params, 0).unwrap();
 
             if position.true_active_color == Color::White {
                 println!("{}", result.best_move.unwrap());

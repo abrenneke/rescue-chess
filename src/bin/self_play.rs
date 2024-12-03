@@ -1,5 +1,9 @@
 use clap::Parser;
-use rescue_chess::{piece_move::GameType, search::game_state::GameState, Color, Position};
+use rescue_chess::{
+    piece_move::GameType,
+    search::{alpha_beta::Features, game_state::GameState},
+    Color, Position,
+};
 use std::{thread, time::Duration};
 
 #[derive(Parser)]
@@ -49,7 +53,10 @@ fn main() {
     let think_time_ms = args.think_time_ms.unwrap_or(5_000);
 
     let mut game_state = GameState {
-        enable_lmr: true,
+        features: Features {
+            enable_lmr: true,
+            ..Default::default()
+        },
         debug_logs_verbose: true,
         search_depth: args.depth,
         time_limit_ms: think_time_ms,
