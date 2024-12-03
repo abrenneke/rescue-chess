@@ -26,37 +26,41 @@ pub struct GoCommand {
 impl CommandHandler for GoCommand {
     fn execute(&self, engine: &mut UciEngine) -> std::io::Result<bool> {
         // Update search depth if specified
-        if let Some(depth) = self.depth {
-            engine.game_state.search_depth = depth;
+        {
+            let mut game_state = engine.game_state.lock().unwrap();
+            if let Some(depth) = self.depth {
+                game_state.search_depth = depth;
+            }
+
+            trace!("Searching to depth {}", game_state.search_depth);
+            trace!("Current position: {}", game_state.current_position.to_fen());
         }
 
-        trace!("Searching to depth {}", engine.game_state.search_depth);
-        trace!(
-            "Current position: {}",
-            engine.game_state.current_position.to_fen()
-        );
+        let game_state = engine.game_state.clone();
+        let stdout = engine.stdout.clone();
 
-        // Perform search
-        match engine.game_state.search_and_apply() {
-            Ok((results, _)) => {
-                if let Some(mut best_move) = results.best_move {
-                    if engine.game_state.current_turn == Color::White {
+        std::thread::spawn(move || {
+            let mut game_state = game_state.lock().unwrap();
+            let mut stdout = stdout.lock().unwrap();
+
+            // Perform search
+            match game_state.search_and_apply() {
+                Ok((mut best_move, _)) => {
+                    if game_state.current_turn == Color::White {
                         best_move = best_move.inverted();
                     }
 
                     trace!("Best move: {}", best_move);
-                    writeln!(engine.stdout, "bestmove {}", best_move.to_uci())?;
-                } else {
-                    trace!("No best move found");
-                    writeln!(engine.stdout, "bestmove 0000")?;
+                    writeln!(stdout, "bestmove {}", best_move.to_uci()).unwrap();
+                }
+                Err(e) => {
+                    trace!("Error searching: {}", e);
+                    writeln!(stdout, "bestmove 0000").unwrap();
                 }
             }
-            Err(e) => {
-                trace!("Error searching: {}", e);
-                writeln!(engine.stdout, "bestmove 0000")?;
-            }
-        }
-        engine.stdout.flush()?;
+            stdout.flush().unwrap();
+        });
+
         Ok(true)
     }
 }

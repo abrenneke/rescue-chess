@@ -1,6 +1,6 @@
 use tracing::trace;
 
-use crate::{evaluation::order_moves, piece_move::GameType, Color, PieceMove, Position};
+use crate::{evaluation::order_moves, piece_move::GameType, Color, PieceMove, PieceType, Position};
 
 use super::{
     quiescence_search::quiescence_search,
@@ -17,11 +17,12 @@ pub struct SearchResult {
 const CHECKMATE: i32 = -1000000;
 const STALEMATE: i32 = 0;
 
+#[derive(Debug, Clone)]
 pub struct SearchParams {
     pub initial_bound: i32,
     pub depth: u32,
     pub quiescence_depth: u32,
-    pub time_limit: u128,
+    pub time_limit: u64,
     pub game_type: GameType,
 
     pub debug_print: bool,
@@ -42,7 +43,7 @@ impl Default for SearchParams {
             initial_bound: 2000000,
             depth: 3,
             quiescence_depth: 4,
-            time_limit: u128::MAX,
+            time_limit: u64::MAX,
             game_type: GameType::Classic,
             debug_print: false,
             debug_print_verbose: false,
@@ -72,7 +73,11 @@ pub enum Error {
     Timeout,
 }
 
-pub fn search(position: &Position, state: &mut SearchState, params: SearchParams) -> SearchResults {
+pub fn search(
+    position: &Position,
+    state: &mut SearchState,
+    params: SearchParams,
+) -> Result<SearchResults, Error> {
     let mut alpha = match params.previous_score {
         Some(score) => score - params.window_size,
         None => -params.window_size,
@@ -96,16 +101,16 @@ pub fn search(position: &Position, state: &mut SearchState, params: SearchParams
             .unwrap()
             .is_empty()
         {
-            return SearchResults {
+            return Ok(SearchResults {
                 best_move: None,
                 principal_variation: None,
                 score: CHECKMATE,
-                nodes_searched: state.nodes_searched,
-                cached_positions: state.cached_positions,
+                nodes_searched: state.data.nodes_searched,
+                cached_positions: state.data.cached_positions,
                 depth: params.depth,
-                time_taken_ms: state.start_time.elapsed().as_millis(),
-                pruned: state.pruned,
-            };
+                time_taken_ms: state.data.start_time.elapsed().as_millis(),
+                pruned: state.data.pruned,
+            });
         }
 
         alpha = alpha.max(-params.initial_bound);
@@ -116,23 +121,23 @@ pub fn search(position: &Position, state: &mut SearchState, params: SearchParams
                 if let Some(pv) = result.principal_variation {
                     if !pv.is_empty() {
                         // Score within window - we're done!
-                        let time_taken_ms = state.start_time.elapsed().as_millis();
+                        let time_taken_ms = state.data.start_time.elapsed().as_millis();
                         let best_move = pv.first().cloned();
 
-                        return SearchResults {
+                        return Ok(SearchResults {
                             best_move,
                             principal_variation: Some(pv),
                             score: result.score,
-                            nodes_searched: state.nodes_searched,
-                            cached_positions: state.cached_positions,
+                            nodes_searched: state.data.nodes_searched,
+                            cached_positions: state.data.cached_positions,
                             depth: params.depth,
                             time_taken_ms,
-                            pruned: state.pruned,
-                        };
+                            pruned: state.data.pruned,
+                        });
                     }
                 }
             }
-            Err(Error::Timeout) => panic!("Search timed out"),
+            Err(Error::Timeout) => return Err(Error::Timeout),
         }
 
         if !params.enable_window_search {
@@ -198,7 +203,13 @@ fn should_reduce_move(mv: &PieceMove, depth: u32, move_index: usize, in_check: b
     depth >= 3 && // Only reduce at deeper depths
     move_index >= 4 && // Don't reduce first few moves
     !mv.is_capture() && // Don't reduce captures
-    !in_check // Don't reduce when in check
+    !in_check && // Don't reduce when in check
+    // Don't reduce pawn moves that are about to promote
+    !(mv.piece_type == PieceType::Pawn && mv.to.get_row() <= 1) &&
+    // Don't reduce central pawn moves in early/midgame
+    !(mv.piece_type == PieceType::Pawn && 
+        (mv.to.get_col() == 3 || mv.to.get_col() == 4) && 
+        (mv.to.get_row() == 3 || mv.to.get_row() == 4))
 }
 
 pub fn alpha_beta(
@@ -226,7 +237,7 @@ pub fn alpha_beta(
                 );
             }
 
-            state.cached_positions += 1;
+            state.data.cached_positions += 1;
             return Ok(SearchResult {
                 principal_variation: Some(
                     state
@@ -239,15 +250,15 @@ pub fn alpha_beta(
     }
 
     // If we have exceeded the time limit, we should return an error.
-    if state.start_time.elapsed().as_millis() >= state.time_limit {
+    if state.data.start_time.elapsed().as_millis() >= state.data.time_limit as u128 {
         return Err(Error::Timeout);
     }
 
     // Increment the total number of nodes searched.
-    state.nodes_searched += 1;
+    state.data.nodes_searched += 1;
 
-    if state.nodes_searched % 1000000 == 0 {
-        trace!("Nodes searched: {}", state.nodes_searched);
+    if state.data.nodes_searched % 1000000 == 0 {
+        trace!("Nodes searched: {}", state.data.nodes_searched);
     }
 
     // If the position is a checkmate, we should return a very low score.
@@ -314,11 +325,7 @@ pub fn alpha_beta(
         });
     }
 
-    let prev_best_move = state
-        .transposition_table
-        .try_get(position, depth, alpha, beta)
-        .and_then(|entry| entry.principal_variation);
-
+    let prev_best_move = state.data.previous_pv;
     let ordered_moves = order_moves(position, moves, prev_best_move);
 
     let mut iteration = SearchIteration {
@@ -430,8 +437,7 @@ fn test_move(
 
     // Implement Late Move Reduction
     let mut score = if params.enable_lmr && should_reduce_move(&mv, depth, move_index, in_check) {
-        // Calculate reduction depth - can be tuned
-        let reduction = if move_index > 6 { 2 } else { 1 };
+        let reduction = (depth.min(move_index as u32) / 3).max(1);
 
         if params.debug_print_verbose {
             trace!(
@@ -500,7 +506,7 @@ fn test_move(
 
     // Rest of the move processing remains the same
     if score >= iteration.beta {
-        iteration.state.pruned += 1;
+        iteration.state.data.pruned += 1;
 
         if params.enable_transposition_table {
             iteration.state.transposition_table.insert(
@@ -555,6 +561,13 @@ fn test_move(
                 iteration.alpha
             );
         }
+
+        // Update the best move so far if we are at the root
+        if depth == params.depth {
+            iteration.state.data.best_move_so_far = Some(mv);
+
+            println!("Best move so far: {}", mv);
+        }
     }
 
     if params.debug_print_verbose {
@@ -594,7 +607,7 @@ pub mod tests {
         };
 
         // Search to depth 4 which should be enough to detect the checkmate threat
-        let result = search(&position, &mut state, params);
+        let result = search(&position, &mut state, params).unwrap();
         let best_move = result.best_move.unwrap().inverted().to_string();
 
         trace!(
@@ -645,7 +658,7 @@ pub mod tests {
             ..Default::default()
         };
 
-        let result = search(&position, &mut state, params);
+        let result = search(&position, &mut state, params).unwrap();
         assert!(position.is_checkmate(GameType::Classic).unwrap());
         assert_eq!(result.score, -1000000);
         assert!(result.best_move.is_none());
@@ -673,7 +686,7 @@ pub mod tests {
 
             dbg!(position.get_all_legal_moves(GameType::Classic)).unwrap();
 
-            let result = search(&position, &mut state, params);
+            let result = search(&position, &mut state, params).unwrap();
             let best_move = result.best_move.unwrap().to_string();
 
             trace!(
@@ -723,7 +736,7 @@ pub mod tests {
                 ..Default::default()
             };
 
-            let result = search(&position, &mut state, params);
+            let result = search(&position, &mut state, params).unwrap();
 
             let best_move = result.best_move.unwrap().to_string();
 
@@ -771,7 +784,7 @@ pub mod tests {
             ..Default::default()
         };
 
-        let result = search(&position, &mut state, params);
+        let result = search(&position, &mut state, params).unwrap();
         let best_move = result.best_move.unwrap().to_string();
 
         // White should play Nf6+, forking king and rook
@@ -797,7 +810,7 @@ pub mod tests {
             ..Default::default()
         };
 
-        let result = search(&position, &mut state, params);
+        let result = search(&position, &mut state, params).unwrap();
         let best_move = result.best_move.unwrap().to_string();
 
         // White should play Bb5, pinning the knight

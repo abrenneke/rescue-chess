@@ -94,13 +94,22 @@ fn score_move(_position: &Position, mv: &PieceMove, prev_best_move: Option<Piece
         score -= piece_value(mv.piece_type) * 10;
     }
 
+    // Central pawn pushes in opening/middlegame
+    if mv.piece_type == PieceType::Pawn {
+        let to_col = mv.to.get_col();
+        let to_row = mv.to.get_row();
+        if (to_col == 3 || to_col == 4) && (to_row == 3 || to_row == 4) {
+            score += 6000; // High but below captures
+        }
+    }
+
     // 3. Killer moves (moves that caused beta cutoffs at the same ply in other branches)
     // This would require storing killer moves in the search state
     // score += check_if_killer_move(mv) * 9000;
 
     // 4. Special moves
     if let MoveType::Promotion(_) = mv.move_type {
-        score += 8000;
+        score += 15000;
     }
 
     // if mv.is_check() {

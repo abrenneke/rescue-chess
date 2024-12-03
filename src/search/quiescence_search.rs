@@ -1,3 +1,5 @@
+use tracing::trace;
+
 use crate::{
     evaluation::{evaluate_position, piece_value},
     piece_move::MoveType,
@@ -20,7 +22,7 @@ pub fn quiescence_search(
 ) -> Result<SearchResult, Error> {
     if position.is_checkmate(params.game_type).unwrap() {
         if params.debug_print_verbose {
-            println!(
+            trace!(
                 "{}[Quiescence] Checkmate found",
                 "\t".repeat((initial_depth + (params.quiescence_depth - depth)) as usize)
             );
@@ -38,7 +40,7 @@ pub fn quiescence_search(
     // Fail-high if standing pat beats beta
     if stand_pat >= beta {
         if params.debug_print_verbose {
-            println!(
+            trace!(
                 "{}[Quiescence] Standing pat beats beta: {}",
                 "\t".repeat((initial_depth + (params.quiescence_depth - depth)) as usize),
                 stand_pat
@@ -54,7 +56,7 @@ pub fn quiescence_search(
     // Update alpha if standing pat is better
     if stand_pat > alpha {
         if params.debug_print_verbose {
-            println!(
+            trace!(
                 "{}[Quiescence] Standing pat is better: {}",
                 "\t".repeat((initial_depth + (params.quiescence_depth - depth)) as usize),
                 stand_pat
@@ -67,7 +69,7 @@ pub fn quiescence_search(
     // Stop searching if we've hit maximum quiescence depth
     if depth == 0 {
         if params.debug_print_verbose {
-            println!(
+            trace!(
                 "{}[Quiescence] Reached maximum depth: {}",
                 "\t".repeat((initial_depth + (params.quiescence_depth - depth)) as usize),
                 stand_pat
@@ -82,7 +84,7 @@ pub fn quiescence_search(
 
     // Get only capture moves
     let mut moves = position.get_all_legal_moves(params.game_type).unwrap();
-    moves.retain(|mv| mv.is_capture());
+    moves.retain(|mv| mv.is_capture() || matches!(mv.move_type, MoveType::Promotion(_)));
 
     moves.sort_by_key(|mv| {
         if let MoveType::Capture {
@@ -107,7 +109,7 @@ pub fn quiescence_search(
     // If no captures are available, return standing pat
     if moves.is_empty() {
         if params.debug_print_verbose {
-            println!(
+            trace!(
                 "{}[Quiescence] No captures available: {}",
                 "\t".repeat((initial_depth + (params.quiescence_depth - depth)) as usize),
                 stand_pat
@@ -130,7 +132,7 @@ pub fn quiescence_search(
         child.invert();
 
         if params.debug_print_verbose {
-            println!(
+            trace!(
                 "{}[Quiescence] Searching move: {}",
                 "\t".repeat((initial_depth + (params.quiescence_depth - depth)) as usize),
                 mv
@@ -152,7 +154,7 @@ pub fn quiescence_search(
 
         // Beta cutoff
         if score >= beta {
-            state.pruned += 1;
+            state.data.pruned += 1;
             return Ok(SearchResult {
                 principal_variation: None,
                 score: beta,

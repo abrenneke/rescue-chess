@@ -5,9 +5,8 @@ use tracing::trace;
 use crate::{piece_move::GameType, Color, PieceMove, Position};
 
 use super::{
-    alpha_beta::{self, SearchParams},
-    search_results::{SearchResults, SearchState, SearchStats},
-    transposition_table::TranspositionTable,
+    alpha_beta::SearchParams, iterative_deepening::IterativeDeepeningData,
+    search_results::SearchStats,
 };
 
 pub struct GameState {
@@ -32,11 +31,19 @@ pub struct GameState {
     /// The depth to search to.
     pub search_depth: u32,
 
-    pub transposition_table: TranspositionTable,
+    pub iterative_deepening_data: IterativeDeepeningData,
 
     pub game_type: GameType,
 
-    pub debug_logs_1: bool,
+    pub debug_logs_verbose: bool,
+
+    pub enable_transposition_table: bool,
+
+    pub enable_lmr: bool,
+
+    pub enable_window_search: bool,
+
+    pub time_limit_ms: u64,
 }
 
 impl GameState {
@@ -49,9 +56,13 @@ impl GameState {
             move_number: 1,
             previous_scores: (None, None),
             search_depth: 4,
-            transposition_table: TranspositionTable::new(),
+            iterative_deepening_data: IterativeDeepeningData::new(),
             game_type: GameType::Classic,
-            debug_logs_1: false,
+            debug_logs_verbose: false,
+            enable_transposition_table: true,
+            enable_lmr: true,
+            enable_window_search: true,
+            time_limit_ms: 5_000,
         };
 
         state.positions.insert(state.current_position.clone(), 1);
@@ -116,30 +127,37 @@ impl GameState {
         }
     }
 
-    pub fn search_and_apply(&mut self) -> Result<(SearchResults, SearchStats), anyhow::Error> {
+    pub fn search_and_apply(&mut self) -> Result<(PieceMove, SearchStats), anyhow::Error> {
         let params = SearchParams {
             depth: self.search_depth,
             game_type: self.game_type,
             previous_score: self.previous_score(self.current_turn),
             debug_print: true,
-            enable_lmr: false,
+            enable_window_search: self.enable_window_search,
+            enable_transposition_table: self.enable_transposition_table,
+            enable_lmr: self.enable_lmr,
+            debug_print_verbose: self.debug_logs_verbose,
+            time_limit: self.time_limit_ms,
             ..Default::default()
         };
 
-        let mut state = SearchState::new(&mut self.transposition_table);
-        let result = alpha_beta::search(&self.current_position, &mut state, params);
-        let stats = state.to_stats();
+        self.iterative_deepening_data
+            .update_position(self.current_position.clone());
+        self.iterative_deepening_data.search(params);
+        let stats = self.iterative_deepening_data.stats.clone();
 
-        self.update_previous_score(self.current_turn, result.score);
-
-        if let Some(best_move) = result.best_move {
+        if let Some(best_move) = self.iterative_deepening_data.best_move {
+            self.update_previous_score(
+                self.current_turn,
+                self.iterative_deepening_data.best_score.unwrap(),
+            );
             self.apply_move(best_move)?;
         } else {
             return Err(anyhow::anyhow!("No best move found"));
         }
 
         if self.positions[&self.current_position] > 1 {
-            if self.debug_logs_1 {
+            if self.debug_logs_verbose {
                 trace!(
                     "Position has been seen > 1 time, increasing depth to {}",
                     self.search_depth + 1,
@@ -148,6 +166,6 @@ impl GameState {
             self.search_depth += 1;
         }
 
-        Ok((result, stats))
+        Ok((self.iterative_deepening_data.best_move.unwrap(), stats))
     }
 }

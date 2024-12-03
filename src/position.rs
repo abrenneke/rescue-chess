@@ -431,6 +431,8 @@ impl Position {
 
         for mv in possible_moves.into_iter() {
             // let orig = position.clone();
+
+            let prev_en_passant = position.en_passant;
             position.apply_move(mv)?;
 
             if !position.is_king_in_check()? {
@@ -438,6 +440,7 @@ impl Position {
             }
 
             position.unapply_move(mv)?;
+            position.en_passant = prev_en_passant;
 
             // if orig.to_board_string_with_rank_file_holding()
             //     != position.to_board_string_with_rank_file_holding()
@@ -631,12 +634,46 @@ impl Position {
                             });
                         }
                     } else {
-                        moves.push(PieceMove {
-                            from: piece.position,
-                            to,
-                            move_type: MoveType::Normal,
-                            piece_type: piece.piece_type,
-                        });
+                        if piece.piece_type == PieceType::Pawn {
+                            if let Some(en_passant) = self.en_passant {
+                                if to == en_passant {
+                                    moves.push(PieceMove {
+                                        from: piece.position,
+                                        to,
+                                        move_type: MoveType::EnPassant {
+                                            captured: PieceType::Pawn,
+                                            captured_pos: Pos::xy(en_passant.get_col(), 3),
+                                            captured_holding: self
+                                                .get_piece_at(Pos::xy(en_passant.get_col(), 3))
+                                                .unwrap()
+                                                .holding,
+                                        },
+                                        piece_type: piece.piece_type,
+                                    });
+                                } else {
+                                    moves.push(PieceMove {
+                                        from: piece.position,
+                                        to,
+                                        move_type: MoveType::Normal,
+                                        piece_type: piece.piece_type,
+                                    });
+                                }
+                            } else {
+                                moves.push(PieceMove {
+                                    from: piece.position,
+                                    to,
+                                    move_type: MoveType::Normal,
+                                    piece_type: piece.piece_type,
+                                });
+                            }
+                        } else {
+                            moves.push(PieceMove {
+                                from: piece.position,
+                                to,
+                                move_type: MoveType::Normal,
+                                piece_type: piece.piece_type,
+                            });
+                        }
                     }
                 }
 
@@ -1017,6 +1054,7 @@ impl Position {
         }
 
         self.try_remove_castling_rights(mv);
+        self.try_en_passant_set(mv);
 
         Ok(())
     }
@@ -1237,6 +1275,16 @@ impl Position {
         self.try_readd_castling_rights(mv);
 
         Ok(())
+    }
+
+    fn try_en_passant_set(&mut self, mv: PieceMove) {
+        let piece = self.get_piece_at(mv.to).unwrap();
+
+        if piece.piece_type == PieceType::Pawn && mv.from.get_row() == 1 && mv.to.get_row() == 3 {
+            self.en_passant = Some(Pos::xy(mv.from.get_col(), 2));
+        } else {
+            self.en_passant = None;
+        }
     }
 
     fn try_readd_castling_rights(&mut self, mv: PieceMove) {
@@ -1794,5 +1842,23 @@ mod tests {
         position.apply_move(mv).unwrap();
 
         println!("{}", position.to_board_string_with_rank_file(false));
+    }
+
+    #[test]
+    fn en_passant_capture() {
+        let position = Position::parse_from_fen("8/8/8/3pP3/8/8/8/8 w - d6 0 1").unwrap();
+
+        let moves = position.get_all_legal_moves(GameType::Classic).unwrap();
+
+        for mv in moves.iter() {
+            println!("{}", mv);
+        }
+
+        assert!(moves.iter().any(|mv| mv.move_type
+            == MoveType::EnPassant {
+                captured_pos: Pos::from_algebraic("d5").unwrap(),
+                captured: PieceType::Pawn,
+                captured_holding: None,
+            }));
     }
 }

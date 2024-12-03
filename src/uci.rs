@@ -4,18 +4,26 @@ use commands::{CommandHandler, UciCommand};
 use tracing::error;
 
 use crate::search::game_state::GameState;
-use std::io::{self};
+use std::{
+    io::{self},
+    sync::{Arc, Mutex},
+};
 
 pub struct UciEngine {
-    pub game_state: GameState,
-    pub stdout: Box<dyn io::Write>,
+    pub game_state: Arc<Mutex<GameState>>,
+    pub stdout: Arc<Mutex<Box<dyn io::Write + Send>>>,
 }
 
 impl UciEngine {
     pub fn new() -> Self {
         Self {
-            game_state: Default::default(),
-            stdout: Box::new(io::stdout()),
+            game_state: Arc::new(Mutex::new(GameState {
+                enable_lmr: true,
+                enable_transposition_table: true,
+                enable_window_search: true,
+                ..Default::default()
+            })),
+            stdout: Arc::new(Mutex::new(Box::new(io::stdout()))),
         }
     }
 
@@ -24,7 +32,7 @@ impl UciEngine {
             UciCommand::Uci(cmd) => cmd.execute(self),
             UciCommand::IsReady(cmd) => cmd.execute(self),
             UciCommand::UciNewGame => {
-                self.game_state = GameState::new();
+                self.game_state = Arc::new(Mutex::new(GameState::new()));
                 Ok(true)
             }
             UciCommand::Position(cmd) => cmd.execute(self),
@@ -83,7 +91,7 @@ mod tests {
         let buffer = Arc::new(Mutex::new(Vec::new()));
         let engine = UciEngine {
             game_state: Default::default(),
-            stdout: Box::new(CaptureStdout::new(buffer.clone())),
+            stdout: Arc::new(Mutex::new(Box::new(CaptureStdout::new(buffer.clone())))),
         };
         (engine, CaptureStdout::new(buffer))
     }
@@ -123,7 +131,10 @@ mod tests {
         // Test starting position
         let cmd = "position startpos".parse::<UciCommand>().unwrap();
         engine.handle_command(cmd).unwrap();
-        assert_eq!(engine.game_state.current_position, Default::default());
+        assert_eq!(
+            engine.game_state.lock().unwrap().current_position,
+            Default::default()
+        );
 
         // Test position with moves
         let cmd = "position startpos moves e2e4 e7e5"
@@ -134,6 +145,8 @@ mod tests {
         // After e2e4 e7e5, black's king should be on e8
         assert!(engine
             .game_state
+            .lock()
+            .unwrap()
             .current_position
             .get_piece_at(Pos::from_algebraic("e8").unwrap())
             .is_some());
@@ -152,11 +165,15 @@ mod tests {
         // Verify some aspects of the position
         assert!(engine
             .game_state
+            .lock()
+            .unwrap()
             .current_position
             .get_piece_at(Pos::from_algebraic("e4").unwrap())
             .is_some());
         assert!(engine
             .game_state
+            .lock()
+            .unwrap()
             .current_position
             .get_piece_at(Pos::from_algebraic("c5").unwrap())
             .is_some());
@@ -243,7 +260,10 @@ mod tests {
         engine.handle_command(cmd).unwrap();
 
         // Verify position was reset
-        assert_eq!(engine.game_state.current_position, Default::default());
+        assert_eq!(
+            engine.game_state.lock().unwrap().current_position,
+            Default::default()
+        );
     }
 
     #[test]
@@ -261,6 +281,8 @@ mod tests {
 
         assert!(engine
             .game_state
+            .lock()
+            .unwrap()
             .current_position
             .get_piece_at(Pos::from_algebraic("d4").unwrap())
             .is_some());
@@ -281,6 +303,8 @@ mod tests {
 
         assert!(engine
             .game_state
+            .lock()
+            .unwrap()
             .current_position
             .get_piece_at(Pos::from_algebraic("e5").unwrap().invert())
             .is_some());

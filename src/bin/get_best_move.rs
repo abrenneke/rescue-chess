@@ -81,7 +81,7 @@ fn main() {
                 ..Default::default()
             };
 
-            let result = alpha_beta::search(&position, &mut state, params);
+            let result = alpha_beta::search(&position, &mut state, params).unwrap();
 
             if position.true_active_color == Color::White {
                 println!("{}", result.best_move.unwrap());
@@ -90,10 +90,13 @@ fn main() {
             }
 
             if args.stats {
-                println!("Nodes searched: {}", state.nodes_searched);
-                println!("Cached positions: {}", state.cached_positions);
-                println!("Time taken: {}ms", state.start_time.elapsed().as_millis());
-                println!("Pruned: {}", state.pruned);
+                println!("Nodes searched: {}", state.data.nodes_searched);
+                println!("Cached positions: {}", state.data.cached_positions);
+                println!(
+                    "Time taken: {}ms",
+                    state.data.start_time.elapsed().as_millis()
+                );
+                println!("Pruned: {}", state.data.pruned);
                 println!("Score: {}", result.score);
             }
         }

@@ -7,21 +7,16 @@ pub struct UciCommand;
 
 impl CommandHandler for UciCommand {
     fn execute(&self, engine: &mut UciEngine) -> std::io::Result<bool> {
-        writeln!(engine.stdout, "id name RescueChess")?;
-        writeln!(engine.stdout, "id author Your Name")?;
+        let mut stdout = engine.stdout.lock().unwrap();
+
+        writeln!(stdout, "id name Rescue")?;
+        writeln!(stdout, "id author Andy Brenneke")?;
 
         // Send options
-        writeln!(
-            engine.stdout,
-            "option name Hash type spin default 16 min 1 max 1024"
-        )?;
-        writeln!(
-            engine.stdout,
-            "option name UCI_Chess960 type check default false"
-        )?;
+        writeln!(stdout, "option name Foo type string default bar")?;
 
-        writeln!(engine.stdout, "uciok")?;
-        engine.stdout.flush()?;
+        writeln!(stdout, "uciok")?;
+        stdout.flush()?;
         Ok(true)
     }
 }

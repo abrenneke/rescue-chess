@@ -81,7 +81,21 @@ impl CanMove for Pawn {
             board.set(pos.moved_unchecked(1, -1));
         }
 
-        // TODO En passant
+        // En passant left
+        if pos.can_move_left()
+            && position.en_passant == Some(pos.moved_unchecked(-1, -1))
+            && black.get(pos.moved_unchecked(-1, 0))
+        {
+            board.set(pos.moved_unchecked(-1, -1));
+        }
+
+        // En passant right
+        if pos.can_move_right()
+            && position.en_passant == Some(pos.moved_unchecked(1, -1))
+            && black.get(pos.moved_unchecked(1, 0))
+        {
+            board.set(pos.moved_unchecked(1, -1));
+        }
 
         board & !white
     }

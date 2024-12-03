@@ -8,7 +8,7 @@ struct Cli {
     pub depth: u32,
 
     #[arg(short = 't', long = "time")]
-    pub think_time_ms: Option<u32>,
+    pub think_time_ms: Option<u64>,
 
     #[arg(short = 'c', long)]
     pub classic: bool,
@@ -21,12 +21,19 @@ struct Cli {
 
     #[arg(long)]
     pub starting_fen: Option<String>,
+
+    #[arg(short = 'v', long)]
+    pub verbose: bool,
 }
 
 fn main() {
-    tracing_subscriber::fmt::init();
-
     let args = Cli::parse();
+
+    if args.verbose {
+        tracing_subscriber::fmt::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .init();
+    }
 
     let game_type = if args.classic {
         GameType::Classic
@@ -39,9 +46,16 @@ fn main() {
         None => Position::start_position(),
     };
 
-    let mut game_state = GameState::from_position(position);
+    let think_time_ms = args.think_time_ms.unwrap_or(5_000);
+
+    let mut game_state = GameState {
+        enable_lmr: true,
+        debug_logs_verbose: true,
+        search_depth: args.depth,
+        time_limit_ms: think_time_ms,
+        ..GameState::from_position(position)
+    };
     game_state.game_type = game_type;
-    game_state.debug_logs_1 = true;
 
     println!("\nStarting position:");
     println!(
@@ -60,45 +74,39 @@ fn main() {
             if is_blacks_turn { "Black" } else { "White" }
         );
 
-        let (result, stats) = game_state.search_and_apply().unwrap();
+        let (best_move, stats) = game_state.search_and_apply().unwrap();
 
-        if let Some(best_move) = result.best_move {
-            println!("Best move: {}", best_move);
-            println!("Score: {}", result.score);
+        println!("Best move: {}", best_move);
 
-            is_blacks_turn = !is_blacks_turn;
+        is_blacks_turn = !is_blacks_turn;
 
-            println!("Nodes searched: {}", stats.nodes_searched);
-            println!("Time taken: {}", stats.time_taken_ms);
-            println!("Cache hits: {}", stats.cached_positions);
-            println!("Pruned: {}", stats.pruned);
+        println!("Nodes searched: {}", stats.nodes_searched);
+        println!("Time taken: {}", stats.time_taken_ms);
+        println!("Cache hits: {}", stats.cached_positions);
+        println!("Pruned: {}", stats.pruned);
 
-            println!("\nPosition after {}:", best_move);
-            println!(
-                "{}",
-                if is_blacks_turn {
-                    game_state
-                        .current_position
-                        .inverted()
-                        .to_board_string_with_rank_file_holding()
-                } else {
-                    game_state
-                        .current_position
-                        .to_board_string_with_rank_file_holding()
-                }
-            );
-            println!(
-                "{}",
-                if is_blacks_turn {
-                    game_state.current_position.inverted().to_fen()
-                } else {
-                    game_state.current_position.to_fen()
-                }
-            );
-        } else {
-            println!("No legal moves available!");
-            break;
-        }
+        println!("\nPosition after {}:", best_move);
+        println!(
+            "{}",
+            if is_blacks_turn {
+                game_state
+                    .current_position
+                    .inverted()
+                    .to_board_string_with_rank_file_holding()
+            } else {
+                game_state
+                    .current_position
+                    .to_board_string_with_rank_file_holding()
+            }
+        );
+        println!(
+            "{}",
+            if is_blacks_turn {
+                game_state.current_position.inverted().to_fen()
+            } else {
+                game_state.current_position.to_fen()
+            }
+        );
 
         // Pause between moves for readability
         thread::sleep(Duration::from_millis(args.pause_ms));

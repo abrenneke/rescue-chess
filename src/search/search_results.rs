@@ -19,16 +19,27 @@ pub struct SearchResults {
 }
 
 pub struct SearchState<'table> {
-    pub nodes_searched: u32,
-    pub cached_positions: u32,
+    pub data: SearchStateData,
     pub transposition_table: &'table mut TranspositionTable,
-    pub rng: rand::rngs::ThreadRng,
-    pub start_time: Instant,
-    pub time_limit: u128,
-    pub pruned: u32,
-    pub best_move_so_far: Option<PieceMove>,
+    pub callbacks: SearchStateCallbacks,
 }
 
+pub struct SearchStateData {
+    pub nodes_searched: u32,
+    pub cached_positions: u32,
+    pub rng: rand::rngs::ThreadRng,
+    pub start_time: Instant,
+    pub time_limit: u64,
+    pub pruned: u32,
+    pub best_move_so_far: Option<PieceMove>,
+    pub previous_pv: Option<PieceMove>,
+}
+
+pub struct SearchStateCallbacks {
+    pub on_new_best_move: Option<Box<dyn FnMut(PieceMove, i32)>>,
+}
+
+#[derive(Clone)]
 pub struct SearchStats {
     pub nodes_searched: u32,
     pub cached_positions: u32,
@@ -36,13 +47,33 @@ pub struct SearchStats {
     pub time_taken_ms: u128,
 }
 
+impl Default for SearchStats {
+    fn default() -> Self {
+        Self {
+            nodes_searched: 0,
+            cached_positions: 0,
+            pruned: 0,
+            time_taken_ms: 0,
+        }
+    }
+}
+
+impl SearchStats {
+    pub fn add(&mut self, stats: SearchStats) {
+        self.nodes_searched += stats.nodes_searched;
+        self.cached_positions += stats.cached_positions;
+        self.pruned += stats.pruned;
+        self.time_taken_ms += stats.time_taken_ms;
+    }
+}
+
 impl<'a> SearchState<'a> {
     pub fn to_stats(&self) -> SearchStats {
         SearchStats {
-            nodes_searched: self.nodes_searched,
-            cached_positions: self.cached_positions,
-            pruned: self.pruned,
-            time_taken_ms: self.start_time.elapsed().as_millis(),
+            nodes_searched: self.data.nodes_searched,
+            cached_positions: self.data.cached_positions,
+            pruned: self.data.pruned,
+            time_taken_ms: self.data.start_time.elapsed().as_millis(),
         }
     }
 }
@@ -50,14 +81,20 @@ impl<'a> SearchState<'a> {
 impl<'a> SearchState<'a> {
     pub fn new(transposition_table: &'a mut TranspositionTable) -> Self {
         Self {
-            nodes_searched: 0,
-            cached_positions: 0,
+            data: SearchStateData {
+                nodes_searched: 0,
+                cached_positions: 0,
+                start_time: Instant::now(),
+                rng: rand::thread_rng(),
+                time_limit: u64::MAX,
+                pruned: 0,
+                best_move_so_far: None,
+                previous_pv: None,
+            },
             transposition_table,
-            start_time: Instant::now(),
-            rng: rand::thread_rng(),
-            time_limit: u128::MAX,
-            pruned: 0,
-            best_move_so_far: None,
+            callbacks: SearchStateCallbacks {
+                on_new_best_move: None,
+            },
         }
     }
 }

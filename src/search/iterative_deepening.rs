@@ -1,17 +1,22 @@
 use std::time::Instant;
 
-use crate::{piece_move::GameType, PieceMove, Position};
+use tracing::trace;
+
+use crate::{PieceMove, Position};
 
 use super::{
     alpha_beta::{self, SearchParams},
-    search_results::{SearchResults, SearchState},
+    search_results::{SearchResults, SearchState, SearchStats},
     transposition_table::TranspositionTable,
 };
 
 pub struct IterativeDeepeningData {
-    current_position: Position,
-    transposition_table: TranspositionTable,
-    best_move: Option<PieceMove>,
+    pub current_position: Position,
+    pub transposition_table: TranspositionTable,
+    pub stats: SearchStats,
+    pub best_move: Option<PieceMove>,
+    pub best_score: Option<i32>,
+    pub previous_pv: Option<PieceMove>,
 }
 
 impl IterativeDeepeningData {
@@ -19,7 +24,10 @@ impl IterativeDeepeningData {
         Self {
             current_position: Position::start_position(),
             transposition_table: TranspositionTable::new(),
+            stats: SearchStats::default(),
             best_move: None,
+            best_score: None,
+            previous_pv: None,
         }
     }
 
@@ -27,33 +35,50 @@ impl IterativeDeepeningData {
         self.current_position = position;
     }
 
-    pub fn search(&mut self, time_limit: u128) {
+    pub fn search(&mut self, params: SearchParams) {
         let mut depth = 1;
         let start_time = Instant::now();
 
         loop {
-            let elapsed = start_time.elapsed().as_millis();
-            if elapsed >= time_limit {
+            if depth > params.depth {
                 break;
             }
 
-            let search_results = self.search_at_depth(depth, start_time, time_limit);
+            let elapsed = start_time.elapsed().as_millis();
+            if elapsed >= params.time_limit as u128 {
+                break;
+            }
 
-            println!(
-                "Depth: {} Score: {} Nodes: {} Cached: {} Time: {} Best Move: {} Pruned: {}, Principal Variation: {:?}",
-                depth,
-                search_results.score,
-                search_results.nodes_searched,
-                search_results.cached_positions,
-                search_results.time_taken_ms,
-                search_results.best_move.unwrap(),
-                search_results.pruned,
-                search_results.principal_variation
-            );
+            let search_results = self.search_at_depth(depth, start_time, &params);
 
-            self.best_move = search_results.best_move;
+            match search_results {
+                Ok(search_results) => {
+                    if params.debug_print_verbose {
+                        trace!(
+                            "Depth: {} Score: {} Nodes: {} Cached: {} Time: {} Best Move: {} Pruned: {}, Principal Variation: {:?}",
+                            depth,
+                            search_results.score,
+                            search_results.nodes_searched,
+                            search_results.cached_positions,
+                            search_results.time_taken_ms,
+                            search_results.best_move.unwrap(),
+                            search_results.pruned,
+                            search_results.principal_variation
+                        );
+                    }
 
-            depth += 1;
+                    self.best_move = search_results.best_move;
+                    self.best_score = Some(search_results.score);
+                    self.previous_pv = search_results.best_move;
+
+                    depth += 1;
+                }
+                Err(e) => match e {
+                    alpha_beta::Error::Timeout => {
+                        break;
+                    }
+                },
+            }
         }
     }
 
@@ -61,20 +86,21 @@ impl IterativeDeepeningData {
         &mut self,
         depth: u32,
         start_time: Instant,
-        time_limit: u128,
-    ) -> SearchResults {
+        params_base: &SearchParams,
+    ) -> Result<SearchResults, alpha_beta::Error> {
         let mut state = SearchState::new(&mut self.transposition_table);
-        state.start_time = start_time;
-        state.time_limit = time_limit;
+        state.data.start_time = start_time;
+        state.data.time_limit = params_base.time_limit;
+        state.data.previous_pv = self.previous_pv;
 
-        let params = SearchParams {
-            depth,
-            time_limit,
-            game_type: GameType::Rescue,
-            ..Default::default()
-        };
+        let mut params = params_base.clone();
+        params.depth = depth;
 
-        alpha_beta::search(&self.current_position, &mut state, params)
+        let results = alpha_beta::search(&self.current_position, &mut state, params);
+
+        self.stats.add(state.to_stats());
+
+        results
     }
 
     pub fn get_best_move(&self) -> Option<PieceMove> {
@@ -84,6 +110,8 @@ impl IterativeDeepeningData {
 
 #[cfg(test)]
 pub mod tests {
+    use crate::search::alpha_beta::SearchParams;
+
     use super::IterativeDeepeningData;
 
     #[test]
@@ -91,7 +119,11 @@ pub mod tests {
         let mut data = IterativeDeepeningData::new();
 
         data.update_position("2K5/7p/RPp5/1rPP4/1b4p1/PbN5/3k4/2q4Q w - - 0 1".into());
-        data.search(1000000);
+        data.search(SearchParams {
+            depth: 5,
+            time_limit: 1000,
+            ..Default::default()
+        });
 
         println!("{}", data.get_best_move().unwrap());
     }

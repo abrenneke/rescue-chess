@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use tracing::trace;
 
 use crate::{search::game_state::GameState, uci::UciEngine, Color, PieceMove, Position};
@@ -13,38 +15,39 @@ pub struct PositionCommand {
 
 impl CommandHandler for PositionCommand {
     fn execute(&self, engine: &mut UciEngine) -> std::io::Result<bool> {
+        let mut game_state = engine.game_state.lock().unwrap();
+
         // Set up initial position
-        engine.game_state = match &self.fen {
+        match &self.fen {
             Some(fen) => {
                 if let Ok(pos) = Position::parse_from_fen(fen) {
-                    GameState::from_position(pos)
+                    game_state.current_position = pos;
                 } else {
                     eprintln!("Invalid FEN: {}", fen);
                     return Ok(true);
                 }
             }
-            None => GameState::new(),
+            None => {
+                game_state.current_position = Position::start_position();
+                game_state.current_turn = Color::White;
+            }
         };
 
         // Apply moves
         for move_str in &self.moves {
-            let mv = if engine.game_state.current_turn == Color::White {
-                PieceMove::from_uci(
-                    &engine.game_state.current_position,
-                    move_str,
-                    engine.game_state.game_type,
-                )
+            let mv = if game_state.current_turn == Color::White {
+                PieceMove::from_uci(&game_state.current_position, move_str, game_state.game_type)
             } else {
                 PieceMove::from_uci_inverted(
-                    &engine.game_state.current_position,
+                    &game_state.current_position,
                     move_str,
-                    engine.game_state.game_type,
+                    game_state.game_type,
                 )
             };
 
             match mv {
                 Ok(mv) => {
-                    let result = engine.game_state.apply_move(mv);
+                    let result = game_state.apply_move(mv);
 
                     trace!("Applied move: {}", move_str);
 

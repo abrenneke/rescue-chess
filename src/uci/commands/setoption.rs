@@ -10,26 +10,17 @@ pub struct SetOptionCommand {
 }
 
 impl CommandHandler for SetOptionCommand {
-    fn execute(&self, _engine: &mut UciEngine) -> std::io::Result<bool> {
+    fn execute(&self, engine: &mut UciEngine) -> std::io::Result<bool> {
+        let mut game_state = engine.game_state.lock().unwrap();
         match self.name.as_str() {
-            "Hash" => {
-                if let Some(value) = &self.value {
-                    if let Ok(size) = value.parse::<usize>() {
-                        // TODO: Implement hash table resizing
-                        println!("Hash size set to {} MB", size);
-                    }
-                }
+            "EnableLMR" => {
+                game_state.enable_lmr = self.value.as_deref() == Some("true");
             }
-            "UCI_Chess960" => {
-                if let Some(value) = &self.value {
-                    if let Ok(enabled) = value.parse::<bool>() {
-                        // TODO: Implement Chess960 mode
-                        println!(
-                            "Chess960 mode {}",
-                            if enabled { "enabled" } else { "disabled" }
-                        );
-                    }
-                }
+            "EnableTranspositionTable" => {
+                game_state.enable_transposition_table = self.value.as_deref() == Some("true");
+            }
+            "EnableWindowSearch" => {
+                game_state.enable_window_search = self.value.as_deref() == Some("true");
             }
             // Add other options as needed
             _ => eprintln!("Unknown option: {}", self.name),

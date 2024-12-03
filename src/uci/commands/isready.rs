@@ -9,9 +9,11 @@ pub struct IsReadyCommand;
 
 impl CommandHandler for IsReadyCommand {
     fn execute(&self, engine: &mut UciEngine) -> std::io::Result<bool> {
+        let mut stdout = engine.stdout.lock().unwrap();
+
         trace!("Sending readyok");
-        writeln!(engine.stdout, "readyok")?;
-        engine.stdout.flush()?;
+        writeln!(stdout, "readyok")?;
+        stdout.flush()?;
         Ok(true)
     }
 }
