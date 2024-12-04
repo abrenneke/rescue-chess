@@ -132,6 +132,17 @@ impl Piece {
             PieceType::King => King::square_bonus(self.position),
         }
     }
+
+    pub fn get_attack_map(&self) -> Bitboard {
+        match self.piece_type {
+            PieceType::Pawn => *pawn::attack_map(self.position),
+            PieceType::Knight => *knight::attack_map(self.position),
+            PieceType::Bishop => *bishop::attack_map(self.position),
+            PieceType::Rook => *rook::attack_map(self.position),
+            PieceType::Queen => *queen::attack_map(self.position),
+            PieceType::King => *king::attack_map(self.position),
+        }
+    }
 }
 
 impl std::fmt::Display for Piece {

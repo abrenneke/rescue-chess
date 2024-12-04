@@ -1,6 +1,8 @@
+use std::sync::LazyLock;
+
 use crate::{
     bitboard::Bitboard, evaluation::square_bonus::SquareBonus, piece::Piece, piece_move::CanMove,
-    Position,
+    Pos, Position,
 };
 
 use super::{ChessPiece, PieceType, RescueChessPiece};
@@ -24,6 +26,47 @@ impl ChessPiece for Rook {
     fn to_unicode() -> &'static str {
         "♜"
     }
+}
+
+static ATTACK_MAPS: LazyLock<[Bitboard; 64]> = LazyLock::new(|| {
+    let mut maps = [Bitboard::new(); 64];
+
+    for i in 0..64 {
+        let mut board = Bitboard::new();
+        let start_pos = crate::Pos(i as u8);
+
+        let mut pos = start_pos;
+        while pos.can_move_down() {
+            pos = pos.moved_unchecked(0, 1);
+            board.set(pos);
+        }
+
+        pos = start_pos;
+        while pos.can_move_up() {
+            pos = pos.moved_unchecked(0, -1);
+            board.set(pos);
+        }
+
+        pos = start_pos;
+        while pos.can_move_left() {
+            pos = pos.moved_unchecked(-1, 0);
+            board.set(pos);
+        }
+
+        pos = start_pos;
+        while pos.can_move_right() {
+            pos = pos.moved_unchecked(1, 0);
+            board.set(pos);
+        }
+
+        maps[i as usize] = board;
+    }
+
+    maps
+});
+
+pub fn attack_map(pos: Pos) -> &'static Bitboard {
+    &ATTACK_MAPS[pos.0 as usize]
 }
 
 #[rustfmt::skip]

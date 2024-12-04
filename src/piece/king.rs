@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use crate::{
     bitboard::Bitboard, evaluation::square_bonus::SquareBonus, piece_move::CanMove, Pos, Position,
 };
@@ -10,6 +12,55 @@ impl RescueChessPiece for King {
     fn can_hold(_other: super::PieceType) -> bool {
         true
     }
+}
+
+static ATTACK_MAPS: LazyLock<[Bitboard; 64]> = LazyLock::new(|| {
+    let mut maps = [Bitboard::new(); 64];
+
+    for i in 0..64 {
+        let mut board = Bitboard::new();
+        let pos = Pos(i as u8);
+
+        if pos.can_move_left() && pos.can_move_up() {
+            board.set(pos.moved_unchecked(-1, -1));
+        }
+
+        if pos.can_move_up() {
+            board.set(pos.moved_unchecked(0, -1));
+        }
+
+        if pos.can_move_right() && pos.can_move_up() {
+            board.set(pos.moved_unchecked(1, -1));
+        }
+
+        if pos.can_move_right() {
+            board.set(pos.moved_unchecked(1, 0));
+        }
+
+        if pos.can_move_right() && pos.can_move_down() {
+            board.set(pos.moved_unchecked(1, 1));
+        }
+
+        if pos.can_move_down() {
+            board.set(pos.moved_unchecked(0, 1));
+        }
+
+        if pos.can_move_left() && pos.can_move_down() {
+            board.set(pos.moved_unchecked(-1, 1));
+        }
+
+        if pos.can_move_left() {
+            board.set(pos.moved_unchecked(-1, 0));
+        }
+
+        maps[i as usize] = board;
+    }
+
+    maps
+});
+
+pub fn attack_map(pos: Pos) -> &'static Bitboard {
+    &ATTACK_MAPS[pos.0 as usize]
 }
 
 #[rustfmt::skip]

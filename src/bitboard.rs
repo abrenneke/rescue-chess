@@ -45,6 +45,30 @@ impl Bitboard {
     pub fn count(&self) -> usize {
         self.0.count_ones() as usize
     }
+
+    #[inline(always)]
+    pub fn invert(self) -> Self {
+        // To rotate 180 degrees:
+        // 1. Flip vertically by reversing each byte
+        // 2. Flip horizontally by reversing the byte order
+
+        let mut result = 0u64;
+        let mut value = self.0;
+
+        // Process each byte (8 rows of the board)
+        for _ in 0..8 {
+            // Get current byte (row)
+            let byte = (value & 0xFF) as u8;
+            // Reverse the bits in the byte using reverse_bits()
+            let reversed = byte.reverse_bits();
+            // Add to result and shift
+            result = (result << 8) | (reversed as u64);
+            // Move to next byte
+            value >>= 8;
+        }
+
+        Bitboard(result)
+    }
 }
 
 impl IntoIterator for Bitboard {
@@ -206,5 +230,156 @@ impl std::str::FromStr for Bitboard {
             }
         }
         Ok(board)
+    }
+}
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+
+    #[test]
+    fn test_bitboard_invert() {
+        // Test Case 1: Single piece in top-left corner
+        let board = Bitboard::from_str(
+            r#"
+            10000000
+            00000000
+            00000000
+            00000000
+            00000000
+            00000000
+            00000000
+            00000000
+        "#,
+        )
+        .unwrap();
+
+        let expected = Bitboard::from_str(
+            r#"
+            00000000
+            00000000
+            00000000
+            00000000
+            00000000
+            00000000
+            00000000
+            00000001
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            board.invert(),
+            expected,
+            "Failed to invert single piece in corner"
+        );
+
+        // Test Case 2: Diagonal pattern
+        let board = Bitboard::from_str(
+            r#"
+            10000000
+            01000000
+            00100000
+            00010000
+            00001000
+            00000100
+            00000010
+            00000001
+        "#,
+        )
+        .unwrap();
+
+        let expected = Bitboard::from_str(
+            r#"
+            10000000
+            01000000
+            00100000
+            00010000
+            00001000
+            00000100
+            00000010
+            00000001
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            board.invert(),
+            expected,
+            "Failed to invert diagonal pattern"
+        );
+
+        // Test Case 3: Complex pattern
+        let board = Bitboard::from_str(
+            r#"
+            11000011
+            10000001
+            00000000
+            00111100
+            00111100
+            00000000
+            10000001
+            11000011
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(board.invert(), board, "Failed to invert symmetric pattern");
+
+        // Test Case 4: Empty board
+        let empty = Bitboard::new();
+        assert_eq!(empty.invert(), empty, "Failed to invert empty board");
+
+        // Test Case 5: Full board
+        let full = !Bitboard::new();
+        assert_eq!(full.invert(), full, "Failed to invert full board");
+    }
+
+    #[test]
+    fn test_double_invert() {
+        // Property test: inverting twice should return to original state
+        let board = Bitboard::from_str(
+            r#"
+            10101010
+            01010101
+            11001100
+            00110011
+            10101010
+            01010101
+            11001100
+            00110011
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            board.invert().invert(),
+            board,
+            "Double invert should return original board"
+        );
+    }
+
+    #[test]
+    fn test_invert_individual_bits() {
+        // Test each bit position individually
+        for pos in 0..64 {
+            let mut board = Bitboard::new();
+            board.set(Pos(pos));
+
+            let inverted = board.invert();
+            let expected_pos = 63 - pos;
+
+            assert!(
+                inverted.get(Pos(expected_pos)),
+                "Failed to correctly invert bit at position {}",
+                pos
+            );
+            assert_eq!(
+                inverted.count(),
+                1,
+                "Inverted board should still have exactly one bit set"
+            );
+        }
     }
 }
