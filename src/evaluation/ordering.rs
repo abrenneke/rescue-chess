@@ -177,7 +177,7 @@ fn score_undermining(position: &Position, mv: &PieceMove) -> i32 {
                         if defender != target {
                             // Don't count the targeted pawn
                             let moves = defender.get_legal_moves(position);
-                            if moves.iter().any(|m| m == piece.position) {
+                            if moves.into_iter().any(|m| m == piece.position) {
                                 other_defenders += 1;
                             }
                         }

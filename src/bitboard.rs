@@ -30,11 +30,6 @@ impl Bitboard {
         self.0 &= !(1 << position.0);
     }
 
-    /// Iterates over all the positions that are occupied by a piece.
-    pub fn iter(&self) -> impl Iterator<Item = Pos> + '_ {
-        (0..64).filter_map(move |i| if self.get(Pos(i)) { Some(Pos(i)) } else { None })
-    }
-
     /// Creates a new empty bitboard. All positions are set to 0.
     #[inline(always)]
     pub fn new() -> Self {

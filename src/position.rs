@@ -552,7 +552,7 @@ impl Position {
             }
 
             // Move to a spot, maybe capture, maybe rescue, maybe drop
-            for to in legal_moves.iter() {
+            for to in legal_moves.into_iter() {
                 if self.white_map.get(to) {
                     panic!("Illegal move");
                 }
@@ -977,7 +977,7 @@ impl Position {
                 self.to_fen(),
                 self.to_board_string_with_rank_file_holding(),
                 legal_moves
-                    .iter()
+                    .into_iter()
                     .map(|pos| pos.to_algebraic())
                     .collect::<Vec<_>>()
                     .join(", ")
