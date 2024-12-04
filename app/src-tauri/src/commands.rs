@@ -135,17 +135,25 @@ pub fn get_black_move(state: State<GlobalState>, app: tauri::AppHandle) -> Resul
             ..Default::default()
         };
 
-        let results = alpha_beta::search(&from_black, &mut state, params);
-        let move_from_whites_perspective = results.best_move.unwrap().inverted();
+        let results = alpha_beta::search(&from_black, &mut state, params, 0);
 
-        app.emit(
-            "black_move",
-            BlackMoveResponse {
-                results,
-                move_from_whites_perspective,
-            },
-        )
-        .unwrap();
+        match results {
+            Ok(results) => {
+                let move_from_whites_perspective = results.best_move.unwrap().inverted();
+
+                app.emit(
+                    "black_move",
+                    BlackMoveResponse {
+                        results,
+                        move_from_whites_perspective,
+                    },
+                )
+                .unwrap();
+            }
+            Err(_) => {
+                eprintln!("Error getting black move");
+            }
+        }
     });
 
     Ok(())
@@ -175,17 +183,25 @@ pub fn get_white_move(state: State<GlobalState>, app: tauri::AppHandle) -> Resul
             ..Default::default()
         };
 
-        let results = alpha_beta::search(&from_white, &mut state, params);
-        let move_from_whites_perspective = results.best_move.unwrap();
+        let results = alpha_beta::search(&from_white, &mut state, params, 0);
 
-        app.emit(
-            "white_move",
-            WhiteMoveResponse {
-                results,
-                move_from_whites_perspective,
-            },
-        )
-        .unwrap();
+        match results {
+            Ok(results) => {
+                let move_from_whites_perspective = results.best_move.unwrap();
+
+                app.emit(
+                    "white_move",
+                    WhiteMoveResponse {
+                        results,
+                        move_from_whites_perspective,
+                    },
+                )
+                .unwrap();
+            }
+            Err(_) => {
+                eprintln!("Error getting white move");
+            }
+        }
     });
 
     Ok(())

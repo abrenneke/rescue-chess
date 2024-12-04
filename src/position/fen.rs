@@ -5,8 +5,6 @@ use crate::{position::CastlingRights, Color, Piece, PieceType, Pos, Position};
 /// Note that this can only parse when the active color is white, because
 /// the engine only supports playing as white.
 ///
-/// TODO Extended Position Description instead?
-///
 /// # Example
 ///
 /// ```

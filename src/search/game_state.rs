@@ -75,6 +75,28 @@ impl GameState {
 
         state
     }
+
+    pub fn calculate_time_for_move(&self) -> u64 {
+        let base_time = self.time_limit_ms;
+        let legal_moves = self
+            .current_position
+            .get_all_legal_moves(self.game_type)
+            .unwrap();
+
+        // Adjust time based on game phase and complexity
+        let time_ms = match (self.move_number, legal_moves.len()) {
+            // Opening: Use less time
+            (n, _) if n <= 10 => base_time / 2,
+            // Complex position: Use more time
+            (_, n) if n > 30 => base_time.saturating_mul(3) / 2,
+            // Endgame: More precise calculation needed
+            (n, _) if n > 40 => base_time.saturating_mul(5) / 4,
+            // Default
+            _ => base_time,
+        };
+
+        time_ms.min(self.time_limit_ms) // Never exceed max time
+    }
 }
 
 impl Default for GameState {

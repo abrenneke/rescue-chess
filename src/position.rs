@@ -1,3 +1,4 @@
+pub mod extended_fen;
 mod fen;
 
 use std::{hash::Hash, mem};
@@ -1231,7 +1232,7 @@ impl Position {
                 self.add_piece(Piece::new(captured, color.invert(), captured_pos))?;
 
                 if let Some(captured_holding) = captured_holding {
-                    self.get_piece_at_mut(mv.to).unwrap().holding = Some(captured_holding);
+                    self.get_piece_at_mut(captured_pos).unwrap().holding = Some(captured_holding);
                 }
             }
             MoveType::Castle { king: _, rook: _ } => {

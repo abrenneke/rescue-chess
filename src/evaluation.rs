@@ -84,6 +84,22 @@ fn score_move(
         return 20000; // Highest priority
     }
 
+    // Check moves should be prioritized
+    {
+        let mut position = position.clone();
+        position.apply_move(mv.clone()).unwrap();
+        position.invert();
+
+        if position.is_king_in_check().unwrap() {
+            score += 25_000;
+
+            let escape_moves = position.get_all_legal_moves(params.game_type).unwrap();
+            if escape_moves.len() <= 2 {
+                score += 15_000;
+            }
+        }
+    }
+
     // 2. Captures, scored by MVV-LVA (Most Valuable Victim - Least Valuable Aggressor)
     if mv.is_capture() {
         // Base capture score
@@ -132,17 +148,6 @@ fn score_move(
         score += 15000;
     }
 
-    // Check moves should be prioritized
-    {
-        let mut position = position.clone();
-        position.apply_move(mv.clone()).unwrap();
-        position.invert();
-
-        if position.is_king_in_check().unwrap() {
-            score += 10_000;
-        }
-    }
-
     // 5. Piece-square table bonuses
     // score += get_piece_square_bonus(mv.piece(), mv.to_square());
 
@@ -153,7 +158,7 @@ fn score_move(
     score
 }
 
-pub fn evaluate_position(board: &Position, game_type: GameType) -> i32 {
+pub fn evaluate_position(board: &Position, game_type: GameType, _params: &SearchParams) -> i32 {
     let mut score = 0;
 
     let inverted = board.inverted();
@@ -210,6 +215,10 @@ pub fn evaluate_position(board: &Position, game_type: GameType) -> i32 {
     let white_mobility = evaluate_mobility(board, game_type);
     let black_mobility = evaluate_mobility(&inverted, game_type);
     score += white_mobility - black_mobility;
+
+    let white_coordination = evaluate_piece_coordination(board);
+    let black_coordination = evaluate_piece_coordination(&inverted);
+    score += white_coordination - black_coordination;
 
     score
 }
@@ -343,6 +352,45 @@ fn evaluate_mobility(position: &Position, game_type: GameType) -> i32 {
     }
 
     white_score
+}
+
+fn evaluate_piece_coordination(position: &Position) -> i32 {
+    let mut score = 0;
+
+    // Track squares attacked by multiple pieces
+    let mut attack_map = [[0i32; 8]; 8];
+
+    // Count attacks on each square
+    for piece in &position.white_pieces {
+        let legal_moves = piece.get_legal_moves(position);
+        for mv in legal_moves {
+            let col = mv.get_col() as usize;
+            let row = mv.get_row() as usize;
+            attack_map[col][row] += 1;
+
+            // Bonus for pieces protecting each other
+            if let Some(defender) = position.get_piece_at(mv) {
+                if defender.color == piece.color {
+                    score += 10;
+                }
+            }
+        }
+    }
+
+    // Score squares attacked by multiple pieces
+    for row in 0..8 {
+        for col in 0..8 {
+            if attack_map[col][row] >= 2 {
+                // Higher bonus for central squares
+                let center_dist = (3.5 - col as f32).abs() + (3.5 - row as f32).abs();
+                let position_bonus = ((4.0 - center_dist) * 5.0) as i32;
+
+                score += attack_map[col][row] * position_bonus;
+            }
+        }
+    }
+
+    score
 }
 
 #[cfg(test)]
@@ -922,7 +970,7 @@ mod tests {
             Position::parse_from_fen("rnbqkbnr/pppppppp/8/8/8/N7/PPPPPPPP/R1BQKBNR w KQkq - 0 1")
                 .unwrap();
 
-        let score = evaluate_position(&position, GameType::Classic);
+        let score = evaluate_position(&position, GameType::Classic, &Default::default());
 
         assert!(score < 20);
     }
@@ -934,7 +982,7 @@ mod tests {
             Position::parse_from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1")
                 .unwrap();
 
-        let score = evaluate_position(&position, GameType::Classic);
+        let score = evaluate_position(&position, GameType::Classic, &Default::default());
 
         dbg!(score);
         assert!(score > 20);
@@ -944,7 +992,7 @@ mod tests {
             Position::parse_from_fen("rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR w KQkq - 0 1")
                 .unwrap();
 
-        let score = evaluate_position(&position, GameType::Classic);
+        let score = evaluate_position(&position, GameType::Classic, &Default::default());
 
         assert!(score > 20);
     }

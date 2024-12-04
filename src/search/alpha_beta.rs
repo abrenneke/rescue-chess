@@ -93,6 +93,8 @@ pub struct ScorePV {
     pub pv: Vec<PieceMove>,
 }
 
+const WINDOW_MODIFIER: i32 = 2;
+
 pub fn search(
     position: &Position,
     state: &mut SearchState,
@@ -100,13 +102,13 @@ pub fn search(
     ply: usize
 ) -> Result<SearchResults, Error> {
     let mut alpha = match params.previous_score {
-        Some(score) => score - params.window_size,
-        None => -params.window_size,
+        Some(score) => score - params.window_size * WINDOW_MODIFIER,
+        None => -params.window_size * WINDOW_MODIFIER,
     };
 
     let mut beta = match params.previous_score {
-        Some(score) => score + params.window_size,
-        None => params.window_size,
+        Some(score) => score + params.window_size * WINDOW_MODIFIER,
+        None => params.window_size * WINDOW_MODIFIER,
     };
 
     let mut failures = 0;
@@ -613,7 +615,7 @@ fn test_move(
 
 #[cfg(test)]
 pub mod tests {
-    use crate::search::transposition_table::TranspositionTable;
+    use crate::{position::extended_fen::{EpdOperand, ExtendedPosition}, search::transposition_table::TranspositionTable};
 
     use super::*;
 
@@ -927,5 +929,89 @@ pub mod tests {
     #[test]
     fn mate_in_5() {
         test_mate("8/4K3/1P6/2PB1r1n/5p2/pp6/k1p4p/3Q4 w - - 0 1", "Qxc2", 10);
+    }
+
+    fn test_one_of_best_moves(position: &str, expected_moves: &[&str], depth: u32) {
+        tracing_subscriber::fmt().init();
+
+        let position = Position::parse_from_fen(position).unwrap();
+
+        let mut transposition_table = TranspositionTable::new();
+        let mut state = SearchState::new(&mut transposition_table);
+
+        let params = SearchParams {
+            depth,
+            game_type: GameType::Classic,
+            ..Default::default()
+        };
+
+        let result = search(&position, &mut state, params, 0).unwrap();
+
+        let best_move = result.best_move.unwrap();
+
+        let best_move = if position.true_active_color == Color::White {
+            best_move.to_string()
+        } else {
+            best_move.inverted().to_string()
+        };
+
+        assert!(
+            expected_moves.contains(&best_move.as_str()),
+            "Expected one of {:?}, got {}",
+            expected_moves,
+            best_move
+        );
+    }
+
+    #[test]
+    fn stockfish_analysis_1() {
+        test_one_of_best_moves("r4rk1/ppp3pp/3q4/1P4R1/2Pn1n2/2N5/PP3PPP/R1BQ2K1 b - - 0 15", &["h6", "Rae8", "Nh3"] , 16);
+    }
+
+    fn test_sts(extended_position: &str, depth: u32) {
+        tracing_subscriber::fmt().init();
+
+        let position = ExtendedPosition::parse_from_epd(extended_position).unwrap();
+
+        let mut transposition_table = TranspositionTable::new();
+        let mut state = SearchState::new(&mut transposition_table);
+
+        let params = SearchParams {
+            depth,
+            game_type: GameType::Classic,
+            ..Default::default()
+        };
+
+        let result = search(&position.position, &mut state, params, 0).unwrap();
+
+        let best_move = result.best_move.unwrap();
+
+        let best_move = if position.position.true_active_color == Color::White {
+            best_move.to_string()
+        } else {
+            best_move.inverted().to_string()
+        };
+
+        let expected_best_move = position.get_operation("bm").unwrap().first().unwrap();
+
+        match expected_best_move {
+            EpdOperand::SanMove(expected_best_move) => {
+
+                if best_move != *expected_best_move {
+                    println!("Expected best move: {}", expected_best_move);
+                    println!("Principal variation: {:?}", result.principal_variation);
+
+                    println!("{}", position.position.to_board_string_with_rank_file_holding());
+                }
+
+                assert_eq!(best_move, *expected_best_move);
+            }
+            _ => panic!("Expected best move not found"),
+        }
+    }
+
+    #[test]
+    fn sts1() {
+        test_sts("1kr5/3n4/q3p2p/p2n2p1/PppB1P2/5BP1/1P2Q2P/3R2K1 w - - bm f5; id \"Undermine.001\"; c0 \"f5=10, Be5+=2, Bf2=3, Bg4=2\";", 10);
     }
 }

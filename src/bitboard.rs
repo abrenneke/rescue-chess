@@ -47,6 +47,38 @@ impl Bitboard {
     }
 }
 
+impl IntoIterator for Bitboard {
+    type Item = Pos;
+    type IntoIter = BitboardIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        BitboardIter {
+            board: self,
+            current: 0,
+        }
+    }
+}
+
+pub struct BitboardIter {
+    board: Bitboard,
+    current: u8,
+}
+
+impl Iterator for BitboardIter {
+    type Item = Pos;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.current < 64 {
+            let pos = Pos(self.current);
+            self.current += 1;
+            if self.board.get(pos) {
+                return Some(pos);
+            }
+        }
+        None
+    }
+}
+
 /// Displays the bitboard as a string of 1s and 0s, with each row separated by a newline.
 impl std::fmt::Display for Bitboard {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

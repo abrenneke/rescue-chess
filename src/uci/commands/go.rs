@@ -31,6 +31,24 @@ impl CommandHandler for GoCommand {
             }
 
             trace!("Searching to depth {}", game_state.search_depth);
+
+            match self.movetime {
+                Some(movetime) => {
+                    game_state.time_limit_ms = movetime;
+                }
+                None => {
+                    if let Some(wtime) = self.wtime {
+                        game_state.time_limit_ms = wtime;
+                    } else if let Some(btime) = self.btime {
+                        game_state.time_limit_ms = btime;
+                    } else {
+                        game_state.time_limit_ms = u64::MAX;
+                    }
+                }
+            }
+
+            trace!("Time limit: {} ms", game_state.time_limit_ms);
+
             trace!("Current position: {}", game_state.current_position.to_fen());
         }
 

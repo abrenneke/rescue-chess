@@ -35,7 +35,7 @@ pub fn quiescence_search(
     }
 
     // First, do a standing pat evaluation
-    let stand_pat = evaluate_position(position, params.game_type);
+    let stand_pat = evaluate_position(position, params.game_type, params);
 
     // Fail-high if standing pat beats beta
     if stand_pat >= beta {

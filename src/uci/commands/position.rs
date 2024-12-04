@@ -20,6 +20,7 @@ impl CommandHandler for PositionCommand {
             Some(fen) => {
                 if let Ok(pos) = Position::parse_from_fen(fen) {
                     game_state.current_position = pos;
+                    game_state.current_turn = game_state.current_position.true_active_color;
                 } else {
                     eprintln!("Invalid FEN: {}", fen);
                     return Ok(true);
