@@ -66,35 +66,40 @@ impl Bitboard {
     }
 }
 
-impl IntoIterator for Bitboard {
-    type Item = Pos;
-    type IntoIter = BitboardIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        BitboardIter {
-            board: self,
-            current: 0,
-        }
-    }
-}
-
 pub struct BitboardIter {
-    board: Bitboard,
-    current: u8,
+    remaining: u64,
 }
 
 impl Iterator for BitboardIter {
     type Item = Pos;
 
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
-        while self.current < 64 {
-            let pos = Pos(self.current);
-            self.current += 1;
-            if self.board.get(pos) {
-                return Some(pos);
-            }
+        if self.remaining == 0 {
+            None
+        } else {
+            // Get position of least significant set bit
+            let pos = self.remaining.trailing_zeros() as u8;
+            // Clear the least significant set bit
+            self.remaining &= self.remaining - 1;
+            Some(Pos(pos))
         }
-        None
+    }
+
+    #[inline(always)]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let count = self.remaining.count_ones() as usize;
+        (count, Some(count))
+    }
+}
+
+impl IntoIterator for Bitboard {
+    type Item = Pos;
+    type IntoIter = BitboardIter;
+
+    #[inline(always)]
+    fn into_iter(self) -> Self::IntoIter {
+        BitboardIter { remaining: self.0 }
     }
 }
 
