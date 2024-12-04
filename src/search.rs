@@ -1,5 +1,6 @@
 pub mod alpha_beta;
 pub mod game_state;
+pub mod history;
 pub mod iterative_deepening;
 pub mod killer_moves;
 pub mod quiescence_search;

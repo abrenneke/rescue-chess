@@ -5,7 +5,7 @@ use serde::Serialize;
 use crate::PieceMove;
 
 use super::{
-    iterative_deepening::OnNewBestMove, killer_moves::KillerMoves,
+    history::HistoryTable, iterative_deepening::OnNewBestMove, killer_moves::KillerMoves,
     transposition_table::TranspositionTable,
 };
 
@@ -26,6 +26,7 @@ pub struct SearchState<'table, 'a> {
     pub transposition_table: &'table mut TranspositionTable,
     pub callbacks: SearchStateCallbacks<'a>,
     pub killer_moves: KillerMoves,
+    pub history: HistoryTable,
 }
 
 pub struct SearchStateData {
@@ -100,6 +101,7 @@ impl<'table, 'a> SearchState<'table, 'a> {
                 on_new_best_move: None,
             },
             killer_moves: KillerMoves::new(64),
+            history: HistoryTable::new(),
         }
     }
 }

@@ -1,4 +1,7 @@
 use clap::Parser;
+use crossbeam::channel;
+use num_cpus;
+use rayon::{self, prelude::*};
 use rescue_chess::{
     piece_move::GameType,
     position::extended_fen::{EpdOperand, ExtendedPosition},
@@ -12,6 +15,10 @@ use rescue_chess::{
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::Instant;
 
 #[derive(Parser)]
 struct Cli {
@@ -24,73 +31,131 @@ struct Cli {
     #[arg(short = 's', long)]
     pub stats: bool,
 
+    #[arg(short = 'j', long, default_value_t = num_cpus::get())]
+    pub jobs: usize,
+
     /// Path to the EPD file containing the Strategic Test Suite
     pub epd_file: PathBuf,
+}
+
+#[derive(Debug)]
+struct TestResult {
+    position_number: usize,
+    success: bool,
+    error: Option<String>,
+    time_taken_ms: u128,
+    position_output: String,
+    stats_output: Option<String>,
 }
 
 fn run_position_test(
     position: ExtendedPosition,
     depth: u32,
-    verbose: bool,
     stats: bool,
-) -> Result<bool, anyhow::Error> {
+    position_number: usize,
+) -> TestResult {
+    let start_time = Instant::now();
+    let mut output = String::new();
+    let mut stats_output = None;
+
     let mut transposition_table = TranspositionTable::new();
     let mut state = SearchState::new(&mut transposition_table);
 
     let params = SearchParams {
         depth,
         game_type: GameType::Classic,
-        debug_print_verbose: verbose,
+        debug_print_verbose: false,
         ..Default::default()
     };
 
-    let result = alpha_beta::search(&position.position, &mut state, params, 0).unwrap();
-    let best_move = result
-        .best_move
-        .ok_or_else(|| anyhow::anyhow!("No best move found"))?;
-
-    let best_move = if position.position.true_active_color == Color::White {
-        best_move.to_string()
-    } else {
-        best_move.inverted().to_string()
+    let result = match alpha_beta::search(&position.position, &mut state, params, 0) {
+        Ok(r) => r,
+        Err(e) => {
+            return TestResult {
+                position_number,
+                success: false,
+                error: Some(format!("Search error: {}", e)),
+                time_taken_ms: start_time.elapsed().as_millis(),
+                position_output: String::new(),
+                stats_output: None,
+            }
+        }
     };
 
-    let expected_best_move = position
-        .get_operation("bm")
-        .and_then(|ops| ops.first())
-        .ok_or_else(|| anyhow::anyhow!("No best move operation in EPD"))?;
-
-    match expected_best_move {
-        EpdOperand::SanMove(expected) => {
-            let success = best_move == *expected;
-
-            if !success || verbose {
-                if let Some(id) = position.get_operation("id").and_then(|ops| ops.first()) {
-                    println!("\nPosition ID: {:?}", id);
-                }
-                println!("Expected best move: {}", expected);
-                println!("Found best move: {}", best_move);
-                println!("Principal variation: {:?}", result.principal_variation);
-                println!(
-                    "{}",
-                    position.position.to_board_string_with_rank_file_holding()
-                );
+    let best_move = match result.best_move {
+        Some(m) => {
+            if position.position.true_active_color == Color::White {
+                m.to_string()
+            } else {
+                m.inverted().to_string()
             }
-
-            if stats {
-                println!("Nodes searched: {}", state.data.nodes_searched);
-                println!("Cached positions: {}", state.data.cached_positions);
-                println!(
-                    "Time taken: {}ms",
-                    state.data.start_time.elapsed().as_millis()
-                );
-                println!("Pruned: {}", state.data.pruned);
-                println!("Score: {}", result.score);
-            }
-
-            Ok(success)
         }
-        _ => Err(anyhow::anyhow!("Invalid best move operand type")),
+        None => {
+            return TestResult {
+                position_number,
+                success: false,
+                error: Some("No best move found".to_string()),
+                time_taken_ms: start_time.elapsed().as_millis(),
+                position_output: String::new(),
+                stats_output: None,
+            }
+        }
+    };
+
+    let expected_best_move = match position.get_operation("bm").and_then(|ops| ops.first()) {
+        Some(EpdOperand::SanMove(expected)) => expected,
+        _ => {
+            return TestResult {
+                position_number,
+                success: false,
+                error: Some("Invalid or missing best move in EPD".to_string()),
+                time_taken_ms: start_time.elapsed().as_millis(),
+                position_output: String::new(),
+                stats_output: None,
+            }
+        }
+    };
+
+    let success = best_move == *expected_best_move;
+
+    if !success {
+        if let Some(id) = position.get_operation("id").and_then(|ops| ops.first()) {
+            output.push_str(&format!("\nPosition ID: {:?}\n", id));
+        }
+        output.push_str(&format!("Position {}\n", position_number));
+        output.push_str(&format!("Expected best move: {}\n", expected_best_move));
+        output.push_str(&format!("Found best move: {}\n", best_move));
+        output.push_str(&format!(
+            "Principal variation: {:?}\n",
+            result.principal_variation
+        ));
+        output.push_str(&format!("{}\n", position.position.to_fen()))
+    }
+
+    if stats {
+        let mut stats = String::new();
+        stats.push_str(&format!("Position {} stats:\n", position_number));
+        stats.push_str(&format!("Nodes searched: {}\n", state.data.nodes_searched));
+        stats.push_str(&format!(
+            "Cached positions: {}\n",
+            state.data.cached_positions
+        ));
+        stats.push_str(&format!(
+            "Time taken: {}ms\n",
+            start_time.elapsed().as_millis()
+        ));
+        stats.push_str(&format!("Pruned: {}\n", state.data.pruned));
+        stats.push_str(&format!("Score: {}\n", result.score));
+        stats_output = Some(stats);
+    }
+
+    TestResult {
+        position_number,
+        success,
+        error: None,
+        time_taken_ms: start_time.elapsed().as_millis(),
+        position_output: output,
+        stats_output,
     }
 }
 
@@ -110,51 +175,123 @@ fn main() -> Result<(), anyhow::Error> {
     let args = Cli::parse();
     let depth = args.depth.unwrap_or(3);
 
+    println!("Running with {} worker threads", args.jobs);
+
     let file = File::open(&args.epd_file)?;
     let reader = io::BufReader::new(file);
+    let positions: Vec<_> = reader
+        .lines()
+        .enumerate()
+        .filter_map(|(i, line)| match line {
+            Ok(l) if !l.trim().is_empty() => Some((i + 1, l)),
+            _ => None,
+        })
+        .collect();
 
-    let mut total_positions = 0;
-    let mut successful_positions = 0;
+    let total_positions = positions.len();
+    println!("Loaded {} positions", total_positions);
 
-    // Process each line in the EPD file
-    for (line_number, line) in reader.lines().enumerate() {
-        let line = line?;
-        if line.trim().is_empty() {
-            continue;
-        }
+    let (sender, receiver) = channel::unbounded();
+    let completed = Arc::new(AtomicUsize::new(0));
+    let start_time = Instant::now();
 
-        total_positions += 1;
-        println!("\nTesting position {} ...", line_number + 1);
+    let completed_clone = completed.clone();
+    thread::spawn(move || {
+        let mut last_completed = 0;
 
-        match ExtendedPosition::parse_from_epd(&line) {
-            Ok(position) => match run_position_test(position, depth, args.verbose, args.stats) {
-                Ok(true) => {
-                    successful_positions += 1;
-                    if args.verbose {
-                        println!("✓ Position {} passed", line_number + 1);
-                    }
-                }
-                Ok(false) => {
-                    println!("✗ Position {} failed", line_number + 1);
-                }
-                Err(e) => {
-                    eprintln!("Error testing position {}: {}", line_number + 1, e);
-                }
-            },
-            Err(e) => {
-                eprintln!("Error parsing position {}: {}", line_number + 1, e);
+        while completed_clone.load(Ordering::Relaxed) < total_positions {
+            thread::sleep(std::time::Duration::from_secs(1));
+            let completed = completed_clone.load(Ordering::Relaxed);
+
+            if completed == last_completed {
+                continue;
             }
-        }
-    }
 
-    // Print final results
-    println!("\nResults:");
+            last_completed = completed;
+
+            println!(
+                "Progress: {}/{} ({:.1}%)",
+                completed,
+                total_positions,
+                (completed as f64 / total_positions as f64) * 100.0
+            );
+        }
+    });
+
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(args.jobs)
+        .build()?;
+
+    pool.scope(|s| {
+        for (position_number, line) in positions {
+            let sender = sender.clone();
+            let completed = completed.clone();
+            let stats = args.stats;
+
+            s.spawn(move |_| {
+                let result = match ExtendedPosition::parse_from_epd(&line) {
+                    Ok(position) => run_position_test(position, depth, stats, position_number),
+                    Err(e) => TestResult {
+                        position_number,
+                        success: false,
+                        error: Some(format!("Parse error: {}", e)),
+                        time_taken_ms: 0,
+                        position_output: String::new(),
+                        stats_output: None,
+                    },
+                };
+
+                sender.send(result).unwrap();
+                completed.fetch_add(1, Ordering::Relaxed);
+            });
+        }
+    });
+
+    drop(sender);
+
+    let mut results: Vec<TestResult> = receiver.iter().collect();
+    results.sort_by_key(|r| r.position_number);
+
+    let successful_positions = results.iter().filter(|r| r.success).count();
+    let total_time = start_time.elapsed();
+
+    println!("\nFinal Results:");
     println!("Total positions tested: {}", total_positions);
     println!("Successful positions: {}", successful_positions);
     println!(
         "Success rate: {:.1}%",
         (successful_positions as f64 / total_positions as f64) * 100.0
     );
+    println!("Total time: {:.2}s", total_time.as_secs_f64());
+
+    println!("\nFailed Positions:");
+    for result in results.iter().filter(|r| !r.success) {
+        if let Some(error) = &result.error {
+            println!("\nPosition {}: Error - {}", result.position_number, error);
+        } else {
+            print!("{}", result.position_output);
+        }
+
+        if args.stats {
+            if let Some(stats) = &result.stats_output {
+                print!("{}", stats);
+            }
+        }
+    }
+
+    if args.verbose {
+        println!("\nAll Positions:");
+        for result in &results {
+            if !result.position_output.is_empty() {
+                print!("{}", result.position_output);
+            }
+            if args.stats {
+                if let Some(stats) = &result.stats_output {
+                    print!("{}", stats);
+                }
+            }
+        }
+    }
 
     Ok(())
 }

@@ -1,6 +1,10 @@
 use tracing::trace;
 
-use crate::{evaluation::order_moves, piece_move::GameType, Color, PieceMove, PieceType, Position};
+use crate::{
+    evaluation::{ordering::order_moves, piece_value},
+    piece_move::GameType,
+    Color, PieceMove, PieceType, Position,
+};
 
 use super::{
     quiescence_search::quiescence_search,
@@ -41,6 +45,8 @@ pub struct Features {
     pub enable_lmr: bool,
     pub enable_window_search: bool,
     pub enable_killer_moves: bool,
+    pub enable_null_move_pruning: bool,
+    pub enable_history: bool,
 }
 
 impl Default for Features {
@@ -50,6 +56,8 @@ impl Default for Features {
             enable_lmr: true,
             enable_window_search: true,
             enable_killer_moves: true,
+            enable_null_move_pruning: true,
+            enable_history: true,
         }
     }
 }
@@ -88,6 +96,14 @@ pub enum Error {
     Timeout,
 }
 
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::Timeout => write!(f, "Search timed out"),
+        }
+    }
+}
+
 pub struct ScorePV {
     pub score: i32,
     pub pv: Vec<PieceMove>,
@@ -99,7 +115,7 @@ pub fn search(
     position: &Position,
     state: &mut SearchState,
     params: SearchParams,
-    ply: usize
+    ply: usize,
 ) -> Result<SearchResults, Error> {
     let mut alpha = match params.previous_score {
         Some(score) => score - params.window_size * WINDOW_MODIFIER,
@@ -206,7 +222,7 @@ struct SearchIteration<'table: 'state, 'state, 'a> {
     alpha: i32,
     beta: i32,
     depth: u32,
-    state: &'state mut SearchState< 'table, 'a>,
+    state: &'state mut SearchState<'table, 'a>,
     principal_variation: Option<Vec<PieceMove>>,
 }
 
@@ -222,7 +238,14 @@ impl<'a, 'b, 'c> std::fmt::Debug for SearchIteration<'a, 'b, 'c> {
 }
 
 // Late move reduction
-fn should_reduce_move(mv: &PieceMove, depth: u32, move_index: usize, in_check: bool, alpha: i32, beta: i32) -> bool {
+fn should_reduce_move(
+    mv: &PieceMove,
+    depth: u32,
+    move_index: usize,
+    in_check: bool,
+    alpha: i32,
+    beta: i32,
+) -> bool {
     if alpha > 900_000 || beta > 900_000 || alpha < -900_000 || beta < -900_000 {
         return false;
     }
@@ -234,9 +257,7 @@ fn should_reduce_move(mv: &PieceMove, depth: u32, move_index: usize, in_check: b
     // Don't reduce pawn moves that are about to promote
     !(mv.piece_type == PieceType::Pawn && mv.to.get_row() <= 1) &&
     // Don't reduce central pawn moves in early/midgame
-    !(mv.piece_type == PieceType::Pawn && 
-        (mv.to.get_col() == 3 || mv.to.get_col() == 4) && 
-        (mv.to.get_row() == 3 || mv.to.get_row() == 4))
+    !(mv.piece_type == PieceType::Pawn && (mv.to.get_col() == 3 || mv.to.get_col() == 4) && (mv.to.get_row() == 3 || mv.to.get_row() == 4))
 }
 
 pub fn alpha_beta(
@@ -335,6 +356,79 @@ pub fn alpha_beta(
         });
     }
 
+    if params.features.enable_null_move_pruning && should_try_null_move(position, depth, beta) {
+        // Make a null move - essentially just switch sides without making a move
+        let mut null_pos = position.clone();
+        null_pos.invert();
+
+        // Enhanced adaptive null move reduction
+        let r = if depth > 6 {
+            // Increase R when we have more material
+            let material = get_material_count(position, position.true_active_color);
+            if material > piece_value(PieceType::Queen) * 2 {
+                4 // More aggressive pruning in piece-heavy positions
+            } else {
+                3
+            }
+        } else {
+            2
+        };
+        let null_depth = (depth - 1 - r).max(0);
+
+        // Search with a null window around beta
+        match alpha_beta(
+            &null_pos,
+            -beta,
+            -beta + 1,
+            null_depth,
+            state,
+            params,
+            ply + 1,
+        ) {
+            Ok(null_result) => {
+                let null_score = -null_result.score;
+
+                // If the null move fails high, we can likely prune this subtree
+                if null_score >= beta {
+                    // Do a reduced-depth verification search when the margin is small
+                    if null_score < beta + 100 {
+                        match alpha_beta(
+                            &null_pos,
+                            beta - 1,
+                            beta,
+                            depth - r - 1,
+                            state,
+                            params,
+                            ply + 1,
+                        ) {
+                            Ok(verify_result) => {
+                                if -verify_result.score < beta {
+                                    // Verification failed, continue with normal search
+                                    // Fall through to regular move generation
+                                } else {
+                                    return Ok(SearchResult {
+                                        principal_variation: None,
+                                        score: beta,
+                                    });
+                                }
+                            }
+                            Err(e) => return Err(e),
+                        }
+                    } else {
+                        // Don't return mate scores from null move
+                        if null_score < 900_000 {
+                            return Ok(SearchResult {
+                                principal_variation: None,
+                                score: beta,
+                            });
+                        }
+                    }
+                }
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
     let moves = position.get_all_legal_moves(params.game_type).unwrap();
 
     if moves.is_empty() {
@@ -374,7 +468,15 @@ pub fn alpha_beta(
     }
 
     for (move_index, mv) in ordered_moves.iter().enumerate() {
-        if let Some(result) = test_move(*mv, position, &mut iteration, params, depth, move_index, ply) {
+        if let Some(result) = test_move(
+            *mv,
+            position,
+            &mut iteration,
+            params,
+            depth,
+            move_index,
+            ply,
+        ) {
             return result;
         }
     }
@@ -464,7 +566,15 @@ fn test_move(
     child.invert();
 
     // Implement Late Move Reduction
-    let mut score_pv: Option<ScorePV> = if params.features.enable_lmr && should_reduce_move(&mv, depth, move_index, in_check, iteration.alpha, iteration.beta) {
+    let mut score_pv: Option<ScorePV> = if params.features.enable_lmr
+        && should_reduce_move(
+            &mv,
+            depth,
+            move_index,
+            in_check,
+            iteration.alpha,
+            iteration.beta,
+        ) {
         let reduction = (depth.min(move_index as u32) / 3).max(1);
 
         if params.debug_print_verbose {
@@ -548,6 +658,10 @@ fn test_move(
             iteration.state.killer_moves.add_killer(mv, ply);
         }
 
+        if params.features.enable_history {
+            iteration.state.history.update_history(&mv, depth, true);
+        }
+
         if params.features.enable_transposition_table {
             iteration.state.transposition_table.insert(
                 position.clone(),
@@ -574,6 +688,10 @@ fn test_move(
             principal_variation: None,
             score: iteration.beta,
         }));
+    } else {
+        if params.features.enable_history {
+            iteration.state.history.update_history(&mv, depth, false);
+        }
     }
 
     if score_pv.score > iteration.alpha {
@@ -613,9 +731,61 @@ fn test_move(
     None
 }
 
+fn should_try_null_move(position: &Position, depth: u32, beta: i32) -> bool {
+    // Don't do null move if:
+    // 1. In check
+    // 2. At shallow depth
+    // 3. Side to move has very few pieces (endgame)
+    // 4. Previous score indicates zugzwang is likely
+    // 5. Beta is close to mate score
+
+    if depth < 3 || position.is_king_in_check().unwrap() || beta > 900_000 || beta < -900_000 {
+        return false;
+    }
+
+    // Don't do null move if we don't have enough material
+    // This helps avoid zugzwang positions
+    let side_to_move_material = get_material_count(position, position.true_active_color);
+    if side_to_move_material < 3 * piece_value(PieceType::Pawn) {
+        return false;
+    }
+
+    // Avoid null move in pawn endgames
+    let white_has_major_pieces = position
+        .white_pieces
+        .iter()
+        .any(|p| p.piece_type == PieceType::Queen || p.piece_type == PieceType::Rook);
+    let black_has_major_pieces = position
+        .black_pieces
+        .iter()
+        .any(|p| p.piece_type == PieceType::Queen || p.piece_type == PieceType::Rook);
+
+    if !white_has_major_pieces || !black_has_major_pieces {
+        return false;
+    }
+
+    true
+}
+
+fn get_material_count(position: &Position, color: Color) -> i32 {
+    let mut material = 0;
+
+    let pieces = if color == Color::White {
+        &position.white_pieces
+    } else {
+        &position.black_pieces
+    };
+
+    for piece in pieces.iter() {
+        material += piece_value(piece.piece_type);
+    }
+
+    material
+}
+
 #[cfg(test)]
 pub mod tests {
-    use crate::{position::extended_fen::{EpdOperand, ExtendedPosition}, search::transposition_table::TranspositionTable};
+    use crate::search::transposition_table::TranspositionTable;
 
     use super::*;
 
@@ -850,9 +1020,12 @@ pub mod tests {
 
     #[test]
     fn mate_in_1() {
-        tracing_subscriber::fmt().with_max_level(tracing::Level::TRACE).init();
+        tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .init();
 
-        let position = Position::parse_from_fen("Q1Q5/P6k/8/5P2/6Q1/6B1/6PP/R3K2R w kq - 0 1").unwrap();
+        let position =
+            Position::parse_from_fen("Q1Q5/P6k/8/5P2/6Q1/6B1/6PP/R3K2R w kq - 0 1").unwrap();
 
         let mut transposition_table = TranspositionTable::new();
         let mut state = SearchState::new(&mut transposition_table);
@@ -868,7 +1041,11 @@ pub mod tests {
         let best_move = result.best_move.unwrap().to_string();
 
         // White should play Qh8#
-        assert_eq!(best_move, "Qh8", "Expected mate with Qh8, got {}", best_move);
+        assert_eq!(
+            best_move, "Qh8",
+            "Expected mate with Qh8, got {}",
+            best_move
+        );
     }
 
     fn test_mate(position: &str, expected_move: &str, depth: u32) {
@@ -887,7 +1064,7 @@ pub mod tests {
                 ..Default::default()
             },
             ..Default::default()
-        };      
+        };
 
         let result = search(&position, &mut state, params, 0).unwrap();
         let best_move = result.best_move.unwrap().to_string();
@@ -895,23 +1072,43 @@ pub mod tests {
         println!("Score: {}", result.score);
         println!("Principal variation: {:?}", result.principal_variation);
 
-        assert_eq!(best_move, expected_move, "Expected mate with {}, got {}", expected_move, best_move);
-        assert!(result.score >= -CHECKMATE, "Expected mate, got score {}", result.score);
+        assert_eq!(
+            best_move, expected_move,
+            "Expected mate with {}, got {}",
+            expected_move, best_move
+        );
+        assert!(
+            result.score >= -CHECKMATE,
+            "Expected mate, got score {}",
+            result.score
+        );
     }
 
     #[test]
     fn mate_in_2() {
-        test_mate("3qr2k/pbpp2pp/1p5N/3Q2b1/2P1P3/P7/1PP2PPP/R4RK1 w - - 0 1", "Qg8", 6);
+        test_mate(
+            "3qr2k/pbpp2pp/1p5N/3Q2b1/2P1P3/P7/1PP2PPP/R4RK1 w - - 0 1",
+            "Qg8",
+            6,
+        );
     }
 
     #[test]
     fn mate_in_2_2() {
-        test_mate("r1bq2k1/ppp2r1p/2np1pNQ/2bNpp2/2B1P3/3P4/PPP2PPP/R3K2R w KQ - 0 1", "Nxf6", 6);
+        test_mate(
+            "r1bq2k1/ppp2r1p/2np1pNQ/2bNpp2/2B1P3/3P4/PPP2PPP/R3K2R w KQ - 0 1",
+            "Nxf6",
+            6,
+        );
     }
 
     #[test]
     fn mate_in_2_3() {
-        test_mate("r1bk3r/1pp2ppp/pb1p1n2/n2P4/B3P1q1/2Q2N2/PB3PPP/RN3RK1 w - - 0 1", "Qxf6", 6);
+        test_mate(
+            "r1bk3r/1pp2ppp/pb1p1n2/n2P4/B3P1q1/2Q2N2/PB3PPP/RN3RK1 w - - 0 1",
+            "Qxf6",
+            6,
+        );
     }
 
     #[test]
@@ -965,53 +1162,19 @@ pub mod tests {
 
     #[test]
     fn stockfish_analysis_1() {
-        test_one_of_best_moves("r4rk1/ppp3pp/3q4/1P4R1/2Pn1n2/2N5/PP3PPP/R1BQ2K1 b - - 0 15", &["h6", "Rae8", "Nh3"] , 16);
-    }
-
-    fn test_sts(extended_position: &str, depth: u32) {
-        tracing_subscriber::fmt().init();
-
-        let position = ExtendedPosition::parse_from_epd(extended_position).unwrap();
-
-        let mut transposition_table = TranspositionTable::new();
-        let mut state = SearchState::new(&mut transposition_table);
-
-        let params = SearchParams {
-            depth,
-            game_type: GameType::Classic,
-            ..Default::default()
-        };
-
-        let result = search(&position.position, &mut state, params, 0).unwrap();
-
-        let best_move = result.best_move.unwrap();
-
-        let best_move = if position.position.true_active_color == Color::White {
-            best_move.to_string()
-        } else {
-            best_move.inverted().to_string()
-        };
-
-        let expected_best_move = position.get_operation("bm").unwrap().first().unwrap();
-
-        match expected_best_move {
-            EpdOperand::SanMove(expected_best_move) => {
-
-                if best_move != *expected_best_move {
-                    println!("Expected best move: {}", expected_best_move);
-                    println!("Principal variation: {:?}", result.principal_variation);
-
-                    println!("{}", position.position.to_board_string_with_rank_file_holding());
-                }
-
-                assert_eq!(best_move, *expected_best_move);
-            }
-            _ => panic!("Expected best move not found"),
-        }
+        test_one_of_best_moves(
+            "r4rk1/ppp3pp/3q4/1P4R1/2Pn1n2/2N5/PP3PPP/R1BQ2K1 b - - 0 15",
+            &["h6", "Rae8", "Nh3"],
+            16,
+        );
     }
 
     #[test]
-    fn sts1() {
-        test_sts("1kr5/3n4/q3p2p/p2n2p1/PppB1P2/5BP1/1P2Q2P/3R2K1 w - - bm f5; id \"Undermine.001\"; c0 \"f5=10, Be5+=2, Bf2=3, Bg4=2\";", 10);
+    fn undermining_1() {
+        test_one_of_best_moves(
+            "1kr5/3n4/q3p2p/p2n2p1/PppB1P2/5BP1/1P2Q2P/3R2K1 w - - 0 1",
+            &["f5"],
+            10,
+        );
     }
 }

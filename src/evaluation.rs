@@ -1,162 +1,9 @@
+pub mod ordering;
 pub mod square_bonus;
 
 use crate::{
-    piece_move::{GameType, MoveType},
-    search::{alpha_beta::SearchParams, search_results::SearchState},
-    Color, PieceMove, PieceType, Pos, Position,
+    piece_move::GameType, search::alpha_beta::SearchParams, Color, PieceType, Pos, Position,
 };
-
-pub fn piece_value(piece_type: PieceType) -> i32 {
-    match piece_type {
-        PieceType::Pawn => 100,
-        PieceType::Knight => 320,
-        PieceType::Bishop => 330,
-        PieceType::Rook => 500,
-        PieceType::Queen => 900,
-        PieceType::King => 20000,
-    }
-}
-
-// Mobility bonuses (in centipawns)
-fn mobility_bonus(piece_type: PieceType) -> i32 {
-    match piece_type {
-        PieceType::Pawn => 0, // Pawns: mobility not counted (evaluated via structure instead)
-        PieceType::Knight => 4, // Knight: 4 points per legal move
-        PieceType::Bishop => 3, // Bishop: 3 points per legal move
-        PieceType::Rook => 2, // Rook: 2 points per legal move
-        PieceType::Queen => 1, // Queen: 1 point per legal move (since they have many moves)
-        PieceType::King => 0, // King (mobility not rewarded in middlegame)
-    }
-}
-
-#[derive(PartialEq, Eq)]
-struct ScoredMove {
-    score: i32,
-    mv: PieceMove,
-}
-
-impl PartialOrd for ScoredMove {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.score.cmp(&other.score))
-    }
-}
-
-impl Ord for ScoredMove {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.score.cmp(&other.score)
-    }
-}
-
-pub fn order_moves(
-    position: &Position,
-    moves: Vec<PieceMove>,
-    prev_best_move: Option<PieceMove>,
-    state: &SearchState,
-    ply: usize,
-    params: &SearchParams,
-) -> Vec<PieceMove> {
-    let mut scored_moves: Vec<ScoredMove> = moves
-        .into_iter()
-        .map(|mv| {
-            let score = score_move(position, &mv, prev_best_move, state, ply, params);
-            ScoredMove { score, mv }
-        })
-        .collect();
-
-    // Sort in descending order (highest score first)
-    scored_moves.sort_by(|a, b| b.score.cmp(&a.score));
-
-    scored_moves.into_iter().map(|sm| sm.mv).collect()
-}
-
-fn score_move(
-    position: &Position,
-    mv: &PieceMove,
-    prev_best_move: Option<PieceMove>,
-    state: &SearchState,
-    ply: usize,
-    params: &SearchParams,
-) -> i32 {
-    let mut score = 0;
-
-    // 1. Hash table move from previous iteration
-    if prev_best_move.is_some() && *mv == prev_best_move.unwrap() {
-        return 20000; // Highest priority
-    }
-
-    // Check moves should be prioritized
-    {
-        let mut position = position.clone();
-        position.apply_move(mv.clone()).unwrap();
-        position.invert();
-
-        if position.is_king_in_check().unwrap() {
-            score += 25_000;
-
-            let escape_moves = position.get_all_legal_moves(params.game_type).unwrap();
-            if escape_moves.len() <= 2 {
-                score += 15_000;
-            }
-        }
-    }
-
-    // 2. Captures, scored by MVV-LVA (Most Valuable Victim - Least Valuable Aggressor)
-    if mv.is_capture() {
-        // Base capture score
-        score += 10000;
-
-        // Add MVV-LVA scoring
-        // Victim value - try to capture most valuable pieces first
-
-        if let MoveType::Capture {
-            captured,
-            captured_holding,
-        } = mv.move_type
-        {
-            score += piece_value(captured) * 100;
-
-            if let Some(captured_holding) = captured_holding {
-                score += piece_value(captured_holding) * 100;
-            }
-        }
-
-        // Subtract attacker value - prefer capturing with less valuable pieces
-        score -= piece_value(mv.piece_type) * 10;
-    }
-
-    if params.features.enable_killer_moves {
-        let killers = state.killer_moves.get_killers(ply);
-        if killers[0].as_ref() == Some(mv) {
-            return 19000; // First killer move
-        }
-        if killers[1].as_ref() == Some(mv) {
-            return 18000; // Second killer move
-        }
-    }
-
-    // Central pawn pushes in opening/middlegame
-    if mv.piece_type == PieceType::Pawn {
-        let to_col = mv.to.get_col();
-        let to_row = mv.to.get_row();
-        if (to_col == 3 || to_col == 4) && (to_row == 3 || to_row == 4) {
-            score += 6000; // High but below captures
-        }
-    }
-
-    // 4. Special moves
-    if let MoveType::Promotion(_) = mv.move_type {
-        score += 15000;
-    }
-
-    // 5. Piece-square table bonuses
-    // score += get_piece_square_bonus(mv.piece(), mv.to_square());
-
-    // 6. History heuristic (moves that were good in earlier positions)
-    // This would require maintaining a history table
-    // score += get_history_score(mv);
-
-    score
-}
 
 pub fn evaluate_position(board: &Position, game_type: GameType, _params: &SearchParams) -> i32 {
     let mut score = 0;
@@ -391,6 +238,29 @@ fn evaluate_piece_coordination(position: &Position) -> i32 {
     }
 
     score
+}
+
+pub fn piece_value(piece_type: PieceType) -> i32 {
+    match piece_type {
+        PieceType::Pawn => 100,
+        PieceType::Knight => 320,
+        PieceType::Bishop => 330,
+        PieceType::Rook => 500,
+        PieceType::Queen => 900,
+        PieceType::King => 20000,
+    }
+}
+
+// Mobility bonuses (in centipawns)
+fn mobility_bonus(piece_type: PieceType) -> i32 {
+    match piece_type {
+        PieceType::Pawn => 0, // Pawns: mobility not counted (evaluated via structure instead)
+        PieceType::Knight => 4, // Knight: 4 points per legal move
+        PieceType::Bishop => 3, // Bishop: 3 points per legal move
+        PieceType::Rook => 2, // Rook: 2 points per legal move
+        PieceType::Queen => 1, // Queen: 1 point per legal move (since they have many moves)
+        PieceType::King => 0, // King (mobility not rewarded in middlegame)
+    }
 }
 
 #[cfg(test)]
