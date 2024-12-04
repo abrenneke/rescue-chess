@@ -1,3 +1,6 @@
+pub mod magic;
+pub mod occupancy;
+
 use std::sync::LazyLock;
 
 use crate::{
@@ -90,63 +93,8 @@ impl SquareBonus for Rook {
 
 impl CanMove for Rook {
     fn get_legal_moves(piece: &Piece, position: &Position) -> Bitboard {
-        let mut board = Bitboard::new();
-        let white = position.white_map;
-        let black = position.black_map;
-
-        // Up
-        let mut position = piece.position;
-        while position.can_move_up() {
-            position = position.moved_unchecked(0, -1);
-            if white.get(position) {
-                break;
-            }
-            board.set(position);
-            if black.get(position) {
-                break;
-            }
-        }
-
-        // Down
-        position = piece.position;
-        while position.can_move_down() {
-            position = position.moved_unchecked(0, 1);
-            if white.get(position) {
-                break;
-            }
-            board.set(position);
-            if black.get(position) {
-                break;
-            }
-        }
-
-        // Left
-        position = piece.position;
-        while position.can_move_left() {
-            position = position.moved_unchecked(-1, 0);
-            if white.get(position) {
-                break;
-            }
-            board.set(position);
-            if black.get(position) {
-                break;
-            }
-        }
-
-        // Right
-        position = piece.position;
-        while position.can_move_right() {
-            position = position.moved_unchecked(1, 0);
-            if white.get(position) {
-                break;
-            }
-            board.set(position);
-            if black.get(position) {
-                break;
-            }
-        }
-
-        board
+        let moves = magic::get_rook_moves_magic(piece.position, position.all_map);
+        moves & !position.white_map
     }
 }
 #[cfg(test)]

@@ -111,7 +111,7 @@ impl std::fmt::Display for Bitboard {
             if i % 8 == 0 {
                 board.push_str("\n");
             }
-            board.push_str(if self.get(i.into()) { "1" } else { "0" });
+            board.push_str(if self.get(i.into()) { "x " } else { ". " });
         }
         write!(f, "{}", board)
     }
@@ -207,7 +207,7 @@ impl std::str::FromStr for Bitboard {
         let mut position = Pos(0);
         for character in s.chars() {
             match character {
-                '1' => {
+                '1' | 'x' => {
                     if position >= Pos(64) {
                         return Err(anyhow::anyhow!("Bitboard notation is too long"));
                     }
@@ -215,7 +215,7 @@ impl std::str::FromStr for Bitboard {
                     board.set(position);
                     position += 1;
                 }
-                '0' => {
+                '0' | '.' => {
                     if position >= Pos(64) {
                         return Err(anyhow::anyhow!("Bitboard notation is too long"));
                     }

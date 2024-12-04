@@ -43,6 +43,8 @@ struct TestResult {
     position_number: usize,
     success: bool,
     error: Option<String>,
+
+    #[allow(dead_code)]
     time_taken_ms: u128,
     position_output: String,
     stats_output: Option<String>,

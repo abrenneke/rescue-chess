@@ -35,6 +35,9 @@ name = "uci"
 [[bin]]
 name = "sts"
 
+[[bin]]
+name = "find_magic_numbers"
+
 [profile.release]
 debug = true
 

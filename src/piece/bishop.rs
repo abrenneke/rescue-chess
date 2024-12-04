@@ -1,3 +1,6 @@
+pub mod magic;
+pub mod occupancy;
+
 use std::sync::LazyLock;
 
 use crate::{
@@ -90,64 +93,8 @@ impl SquareBonus for Bishop {
 
 impl CanMove for Bishop {
     fn get_legal_moves(piece: &Piece, position: &Position) -> Bitboard {
-        let mut board = Bitboard::new();
-        let mut pos = piece.position;
-
-        let white = position.white_map;
-        let black = position.black_map;
-
-        // Down Left
-        while pos.can_move_down() && pos.can_move_left() {
-            pos = pos.moved_unchecked(-1, 1);
-            if white.get(pos) {
-                break;
-            }
-            board.set(pos);
-            if black.get(pos) {
-                break;
-            }
-        }
-
-        // Down Right
-        pos = piece.position;
-        while pos.can_move_down() && pos.can_move_right() {
-            pos = pos.moved_unchecked(1, 1);
-            if white.get(pos) {
-                break;
-            }
-            board.set(pos);
-            if black.get(pos) {
-                break;
-            }
-        }
-
-        // Down right
-        pos = piece.position;
-        while pos.can_move_up() && pos.can_move_left() {
-            pos = pos.moved_unchecked(-1, -1);
-            if white.get(pos) {
-                break;
-            }
-            board.set(pos);
-            if black.get(pos) {
-                break;
-            }
-        }
-
-        // Top left
-        pos = piece.position;
-        while pos.can_move_up() && pos.can_move_right() {
-            pos = pos.moved_unchecked(1, -1);
-            if white.get(pos) {
-                break;
-            }
-            board.set(pos);
-            if black.get(pos) {
-                break;
-            }
-        }
-
-        board
+        let moves = magic::get_bishop_moves_magic(piece.position, position.all_map);
+        moves & !position.white_map
     }
 }
 

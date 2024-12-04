@@ -94,60 +94,20 @@ impl ChessPiece for King {
 
 impl CanMove for King {
     fn get_legal_moves(piece: &Piece, position: &Position) -> Bitboard {
-        let mut board = Bitboard::new();
         let pos = piece.position;
 
+        let mut board = ATTACK_MAPS[pos.0 as usize] & !position.white_map;
         let all = position.all_map;
-
-        // Up left
-        if pos.can_move_left() && pos.can_move_up() {
-            board.set(pos.moved_unchecked(-1, -1));
-        }
-
-        // Up
-        if pos.can_move_up() {
-            board.set(pos.moved_unchecked(0, -1));
-        }
-
-        // Up right
-        if pos.can_move_right() && pos.can_move_up() {
-            board.set(pos.moved_unchecked(1, -1));
-        }
-
-        // Right
-        if pos.can_move_right() {
-            board.set(pos.moved_unchecked(1, 0));
-        }
-
-        // Down right
-        if pos.can_move_down() && pos.can_move_right() {
-            board.set(pos.moved_unchecked(1, 1));
-        }
-
-        // Down
-        if pos.can_move_down() {
-            board.set(pos.moved_unchecked(0, 1));
-        }
-
-        // Down left
-        if pos.can_move_left() && pos.can_move_down() {
-            board.set(pos.moved_unchecked(-1, 1));
-        }
-
-        // Left
-        if pos.can_move_left() {
-            board.set(pos.moved_unchecked(-1, 0));
-        }
 
         if position.true_active_color == Color::White {
             if position.castling_rights.white_queen_side {
                 if !all.get(Pos::from_algebraic("d1").unwrap())
                     && !all.get(Pos::from_algebraic("c1").unwrap())
                     && !all.get(Pos::from_algebraic("b1").unwrap())
-                    && !King::is_in_check(&position)
                     && position
                         .get_piece_at(Pos::from_algebraic("a1").unwrap())
                         .is_some_and(|p| p.color == Color::White && p.piece_type == PieceType::Rook)
+                    && !King::is_in_check(&position)
                 {
                     board.set(Pos::from_algebraic("c1").unwrap());
                 }
@@ -156,10 +116,10 @@ impl CanMove for King {
             if position.castling_rights.white_king_side {
                 if !all.get(Pos::from_algebraic("f1").unwrap())
                     && !all.get(Pos::from_algebraic("g1").unwrap())
-                    && !King::is_in_check(&position)
                     && position
                         .get_piece_at(Pos::from_algebraic("h1").unwrap())
                         .is_some_and(|p| p.color == Color::White && p.piece_type == PieceType::Rook)
+                    && !King::is_in_check(&position)
                 {
                     board.set(Pos::from_algebraic("g1").unwrap());
                 }
@@ -173,10 +133,10 @@ impl CanMove for King {
                 if !all.get(Pos::from_algebraic("e1").unwrap())
                     && !all.get(Pos::from_algebraic("f1").unwrap())
                     && !all.get(Pos::from_algebraic("g1").unwrap())
-                    && !King::is_in_check(&position)
                     && position
                         .get_piece_at(Pos::from_algebraic("h1").unwrap())
                         .is_some_and(|p| p.color == Color::White && p.piece_type == PieceType::Rook)
+                    && !King::is_in_check(&position)
                 {
                     board.set(Pos::from_algebraic("f1").unwrap());
                 }
@@ -186,10 +146,10 @@ impl CanMove for King {
                 // Black king side is b1 + c1
                 if !all.get(Pos::from_algebraic("b1").unwrap())
                     && !all.get(Pos::from_algebraic("c1").unwrap())
-                    && !King::is_in_check(&position)
                     && position
                         .get_piece_at(Pos::from_algebraic("a1").unwrap())
                         .is_some_and(|p| p.color == Color::White && p.piece_type == PieceType::Rook)
+                    && !King::is_in_check(&position)
                 {
                     board.set(Pos::from_algebraic("b1").unwrap());
                 }

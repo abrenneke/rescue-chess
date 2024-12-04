@@ -3,6 +3,7 @@ use crate::{evaluation::square_bonus::SquareBonus, piece_move::CanMove, Bitboard
 pub mod bishop;
 pub mod king;
 pub mod knight;
+pub mod occupancy;
 pub mod pawn;
 pub mod queen;
 pub mod rook;
@@ -34,6 +35,12 @@ pub trait ChessPiece: CanMove + SquareBonus {
 
 pub trait RescueChessPiece: ChessPiece {
     fn can_hold(other: PieceType) -> bool;
+}
+
+impl std::fmt::Display for PieceType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_algebraic(Color::White))
+    }
 }
 
 impl PieceType {

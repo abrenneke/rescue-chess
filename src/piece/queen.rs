@@ -1,3 +1,6 @@
+pub mod magic;
+pub mod occupancy;
+
 use std::sync::LazyLock;
 
 use crate::evaluation::square_bonus::SquareBonus;
