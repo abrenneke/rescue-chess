@@ -158,16 +158,16 @@ fn evaluate_king_safety(position: &Position) -> i32 {
         // Pawn shield bonus
         let shield_positions = [
             (
-                white_king.position.get_col() as i32,
-                (white_king.position.get_row() as i32) - 1,
+                white_king.get_col() as i32,
+                (white_king.get_row() as i32) - 1,
             ),
             (
-                (white_king.position.get_col() as i32 - 1),
-                (white_king.position.get_row() as i32 - 1),
+                (white_king.get_col() as i32 - 1),
+                (white_king.get_row() as i32 - 1),
             ),
             (
-                (white_king.position.get_col() as i32) + 1,
-                (white_king.position.get_row() as i32) - 1,
+                (white_king.get_col() as i32) + 1,
+                (white_king.get_row() as i32) - 1,
             ),
         ];
 
@@ -300,7 +300,7 @@ mod tests {
             0,                  // halfmove clock
             1,                  // fullmove number
         );
-        position.calc_changes(true);
+        position.calc_changes();
 
         // Neither color should have a bishop pair
         assert!(!has_bishop_pair(&position, Color::White));
@@ -329,7 +329,7 @@ mod tests {
             0,
             1,
         );
-        position.calc_changes(true);
+        position.calc_changes();
 
         // White should have a bishop pair
         assert!(has_bishop_pair(&position, Color::White));
@@ -359,7 +359,7 @@ mod tests {
             0,
             1,
         );
-        position.calc_changes(true);
+        position.calc_changes();
 
         // White should not have a bishop pair (same colored squares)
         assert!(!has_bishop_pair(&position, Color::White));
@@ -405,7 +405,7 @@ mod tests {
             0,
             1,
         );
-        position.calc_changes(true);
+        position.calc_changes();
 
         // White should have a bishop pair
         assert!(has_bishop_pair(&position, Color::White));
@@ -526,7 +526,7 @@ mod tests {
             0,
             1,
         );
-        position.calc_changes(true);
+        position.calc_changes();
 
         let white_score = evaluate_king_safety(&position);
         // No pawn shield means no bonus
@@ -559,7 +559,7 @@ mod tests {
             0,
             1,
         );
-        position.calc_changes(true);
+        position.calc_changes();
 
         let white_score = evaluate_king_safety(&position);
         // Two pawns in shield = 40 points
@@ -597,7 +597,7 @@ mod tests {
             0,
             1,
         );
-        position.calc_changes(true);
+        position.calc_changes();
 
         let white_score = evaluate_king_safety(&position);
         // Three pawns in shield = 60 points
@@ -630,7 +630,7 @@ mod tests {
             0,
             1,
         );
-        position.calc_changes(true);
+        position.calc_changes();
 
         let white_score = evaluate_king_safety(&position);
         // Two pawns possible at edge = 40 points
@@ -658,7 +658,7 @@ mod tests {
             0,
             1,
         );
-        position.calc_changes(true);
+        position.calc_changes();
 
         let white_score = evaluate_king_safety(&position);
         // No king means no safety score
@@ -692,7 +692,7 @@ mod tests {
             0,
             1,
         );
-        position.calc_changes(true);
+        position.calc_changes();
 
         let white_score = evaluate_mobility(&position, GameType::Classic);
         // Knight in center has 8 possible moves * 4 points = 32
@@ -713,7 +713,7 @@ mod tests {
             0,
             1,
         );
-        position.calc_changes(true);
+        position.calc_changes();
 
         let white_score = evaluate_mobility(&position, GameType::Classic);
         // Bishop in center has 13 possible moves * 3 points = 39
@@ -734,7 +734,7 @@ mod tests {
             0,
             1,
         );
-        position.calc_changes(true);
+        position.calc_changes();
 
         let white_score = evaluate_mobility(&position, GameType::Classic);
         // Rook in center has 14 possible moves * 2 points = 28
@@ -755,7 +755,7 @@ mod tests {
             0,
             1,
         );
-        position.calc_changes(true);
+        position.calc_changes();
 
         let white_score = evaluate_mobility(&position, GameType::Classic);
         // Queen in center has 27 possible moves * 1 point = 27
@@ -794,7 +794,7 @@ mod tests {
             0,
             1,
         );
-        position.calc_changes(true);
+        position.calc_changes();
 
         let white_score = evaluate_mobility(&position, GameType::Classic);
         // Knight: 8 moves * 4 points = 32
@@ -824,7 +824,7 @@ mod tests {
             0,
             1,
         );
-        position.calc_changes(true);
+        position.calc_changes();
 
         let white_score = evaluate_mobility(&position, GameType::Classic);
         // King: 8 moves * 0 points = 0

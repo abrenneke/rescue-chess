@@ -133,6 +133,7 @@ impl Piece {
         }
     }
 
+    #[inline(always)]
     pub fn get_attack_map(&self) -> Bitboard {
         match self.piece_type {
             PieceType::Pawn => *pawn::attack_map(self.position),

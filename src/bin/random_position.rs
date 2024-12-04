@@ -53,7 +53,7 @@ fn random_board(mut rng: impl Rng) -> Position {
 
     destination_position.white_pieces = start_position.white_pieces;
     destination_position.black_pieces = start_position.black_pieces;
-    destination_position.calc_changes(true);
+    destination_position.calc_changes();
 
     destination_position
 }

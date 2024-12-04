@@ -77,7 +77,8 @@ pub struct Position {
     /// Quick lookup of the index of a piece in the pieces vector
     pub position_lookup: [Option<u8>; 64],
 
-    pub white_king: Option<Piece>,
+    pub white_king: Option<Pos>,
+    pub black_king: Option<Pos>,
 
     pub true_active_color: Color,
 }
@@ -140,7 +141,12 @@ impl Position {
         let white_king = white_pieces
             .iter()
             .find(|piece| piece.piece_type == PieceType::King && piece.color == Color::White)
-            .cloned();
+            .map(|piece| piece.position);
+
+        let black_king = black_pieces
+            .iter()
+            .find(|piece| piece.piece_type == PieceType::King && piece.color == Color::Black)
+            .map(|piece| piece.position);
 
         Position {
             white_pieces,
@@ -153,6 +159,7 @@ impl Position {
             black_map,
             position_lookup,
             white_king,
+            black_king,
             all_map,
             true_active_color: Color::White,
         }
@@ -189,25 +196,33 @@ impl Position {
             self.en_passant = Some(en_passant.invert());
         }
 
-        self.calc_changes(true);
+        mem::swap(&mut self.white_king, &mut self.black_king);
+        if let Some(white_king) = self.white_king {
+            self.white_king = Some(white_king.invert());
+        }
+        if let Some(black_king) = self.black_king {
+            self.black_king = Some(black_king.invert());
+        }
+
+        self.calc_changes();
     }
 
     /// When any piece has changed, this function should be called to
     /// recalculate the bitboards and position lookup.
-    pub fn calc_changes(&mut self, do_calc_position_lookup: bool) {
-        if do_calc_position_lookup {
-            self.white_map = to_bitboard(&self.white_pieces);
-            self.black_map = to_bitboard(&self.black_pieces);
-            self.all_map = self.white_map | self.black_map;
+    pub fn calc_changes(&mut self) {
+        self.white_map = to_bitboard(&self.white_pieces);
+        self.black_map = to_bitboard(&self.black_pieces);
+        self.all_map = self.white_map | self.black_map;
 
-            self.position_lookup = calc_position_lookup(&self.white_pieces, &self.black_pieces);
-        }
+        self.position_lookup = calc_position_lookup(&self.white_pieces, &self.black_pieces);
 
-        self.white_king = self
-            .white_pieces
-            .iter()
-            .find(|piece| piece.piece_type == PieceType::King && piece.color == Color::White)
-            .cloned();
+        // let actual_white_king_position = self
+        //     .white_pieces
+        //     .iter()
+        //     .find(|piece| piece.piece_type == PieceType::King && piece.color == Color::White)
+        //     .map(|piece| piece.position);
+
+        // assert_eq!(self.white_king, actual_white_king_position);
     }
 
     /// Returns a new GamePosition with the colors and board flipped.
@@ -354,6 +369,12 @@ impl Position {
                     self.white_map.set(to);
                 }
                 self.all_map = self.white_map | self.black_map;
+
+                if self.white_king == Some(from) {
+                    self.white_king = Some(to);
+                } else if self.black_king == Some(from) {
+                    self.black_king = Some(to);
+                }
             }
             None => {
                 return Err(anyhow::anyhow!(
@@ -365,7 +386,6 @@ impl Position {
             }
         }
 
-        self.calc_changes(false);
         Ok(())
     }
 
@@ -378,7 +398,7 @@ impl Position {
                 self.white_pieces.remove(index as usize);
             }
 
-            self.calc_changes(true);
+            self.calc_changes();
             Ok(())
         } else {
             Err(anyhow::anyhow!("No piece at position"))
@@ -397,7 +417,7 @@ impl Position {
             self.black_pieces.push(piece);
         }
 
-        self.calc_changes(true);
+        self.calc_changes();
 
         Ok(())
     }
@@ -434,30 +454,31 @@ impl Position {
 
         let mut position = self.clone();
 
-        for mv in possible_moves.into_iter() {
-            // let orig = position.clone();
+        let mut unimpeded_moves = Bitboard::new();
+        for piece in self.black_pieces.iter() {
+            unimpeded_moves = unimpeded_moves | piece.get_attack_map();
+        }
 
+        for mv in possible_moves.into_iter() {
             let prev_en_passant = position.en_passant;
             let prev_castling_rights = position.castling_rights.clone();
             position.apply_move(mv)?;
 
-            if !position.is_king_in_check()? {
+            if let Some(white_king) = position.white_king {
+                if unimpeded_moves.get(white_king) {
+                    if !position.is_king_in_check()? {
+                        moves.push(mv);
+                    }
+                } else {
+                    moves.push(mv);
+                }
+            } else {
                 moves.push(mv);
             }
 
             position.unapply_move(mv)?;
             position.en_passant = prev_en_passant;
             position.castling_rights = prev_castling_rights;
-
-            // if orig.to_board_string_with_rank_file_holding()
-            //     != position.to_board_string_with_rank_file_holding()
-            // {
-            //     println!("Unapplied move: {}", mv);
-            //     assert_eq!(
-            //         orig.to_board_string_with_rank_file_holding(),
-            //         position.to_board_string_with_rank_file_holding()
-            //     );
-            // }
         }
 
         Ok(moves)
@@ -1285,6 +1306,10 @@ impl Position {
             }
         }
 
+        if mv.piece_type == PieceType::King {
+            self.white_king = Some(mv.from);
+        }
+
         Ok(())
     }
 
@@ -1527,7 +1552,7 @@ mod tests {
                 .unwrap()
                 .inverted();
 
-        assert_eq!(position, expected);
+        assert_eq!(position.to_fen(), expected.to_fen());
     }
 
     #[test]

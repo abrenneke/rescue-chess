@@ -59,6 +59,7 @@ static ATTACK_MAPS: LazyLock<[Bitboard; 64]> = LazyLock::new(|| {
     maps
 });
 
+#[inline(always)]
 pub fn attack_map(pos: Pos) -> &'static Bitboard {
     &ATTACK_MAPS[pos.0 as usize]
 }
@@ -206,20 +207,20 @@ impl King {
         match king {
             Some(king) => {
                 // Pawns
-                if let Some(pos) = king.position.moved(-1, -1) {
+                if let Some(pos) = king.moved(-1, -1) {
                     if position.is_piece_at(pos, &[PieceType::Pawn], Color::Black) {
                         return true;
                     }
                 }
 
-                if let Some(pos) = king.position.moved(1, -1) {
+                if let Some(pos) = king.moved(1, -1) {
                     if position.is_piece_at(pos, &[PieceType::Pawn], Color::Black) {
                         return true;
                     }
                 }
 
                 // Ranks and files
-                let mut pos = king.position;
+                let mut pos = king;
 
                 // Up
                 while pos.can_move_up() {
@@ -239,7 +240,7 @@ impl King {
                     }
                 }
 
-                pos = king.position;
+                pos = king;
 
                 // Down
                 while pos.can_move_down() {
@@ -259,7 +260,7 @@ impl King {
                     }
                 }
 
-                pos = king.position;
+                pos = king;
 
                 // Left
                 while pos.can_move_left() {
@@ -279,7 +280,7 @@ impl King {
                     }
                 }
 
-                pos = king.position;
+                pos = king;
 
                 // Right
                 while pos.can_move_right() {
@@ -301,7 +302,7 @@ impl King {
 
                 // Diagonals
 
-                pos = king.position;
+                pos = king;
 
                 // Up left
                 while pos.can_move_up() && pos.can_move_left() {
@@ -324,7 +325,7 @@ impl King {
                     }
                 }
 
-                pos = king.position;
+                pos = king;
 
                 // Up right
                 while pos.can_move_up() && pos.can_move_right() {
@@ -347,7 +348,7 @@ impl King {
                     }
                 }
 
-                pos = king.position;
+                pos = king;
 
                 // Down right
                 while pos.can_move_down() && pos.can_move_right() {
@@ -370,7 +371,7 @@ impl King {
                     }
                 }
 
-                pos = king.position;
+                pos = king;
 
                 // Down left
                 while pos.can_move_down() && pos.can_move_left() {
@@ -394,98 +395,98 @@ impl King {
                 }
 
                 // Knights
-                if let Some(pos) = king.position.moved(-1, -2) {
+                if let Some(pos) = king.moved(-1, -2) {
                     if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
                         return true;
                     }
                 }
 
-                if let Some(pos) = king.position.moved(1, -2) {
+                if let Some(pos) = king.moved(1, -2) {
                     if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
                         return true;
                     }
                 }
 
-                if let Some(pos) = king.position.moved(2, -1) {
+                if let Some(pos) = king.moved(2, -1) {
                     if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
                         return true;
                     }
                 }
 
-                if let Some(pos) = king.position.moved(2, 1) {
+                if let Some(pos) = king.moved(2, 1) {
                     if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
                         return true;
                     }
                 }
 
-                if let Some(pos) = king.position.moved(1, 2) {
+                if let Some(pos) = king.moved(1, 2) {
                     if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
                         return true;
                     }
                 }
 
-                if let Some(pos) = king.position.moved(-1, 2) {
+                if let Some(pos) = king.moved(-1, 2) {
                     if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
                         return true;
                     }
                 }
 
-                if let Some(pos) = king.position.moved(-2, 1) {
+                if let Some(pos) = king.moved(-2, 1) {
                     if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
                         return true;
                     }
                 }
 
-                if let Some(pos) = king.position.moved(-2, -1) {
+                if let Some(pos) = king.moved(-2, -1) {
                     if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
                         return true;
                     }
                 }
 
                 // Kings
-                if let Some(pos) = king.position.moved(-1, -1) {
+                if let Some(pos) = king.moved(-1, -1) {
                     if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
                         return true;
                     }
                 }
 
-                if let Some(pos) = king.position.moved(0, -1) {
+                if let Some(pos) = king.moved(0, -1) {
                     if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
                         return true;
                     }
                 }
 
-                if let Some(pos) = king.position.moved(1, -1) {
+                if let Some(pos) = king.moved(1, -1) {
                     if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
                         return true;
                     }
                 }
 
-                if let Some(pos) = king.position.moved(1, 0) {
+                if let Some(pos) = king.moved(1, 0) {
                     if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
                         return true;
                     }
                 }
 
-                if let Some(pos) = king.position.moved(1, 1) {
+                if let Some(pos) = king.moved(1, 1) {
                     if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
                         return true;
                     }
                 }
 
-                if let Some(pos) = king.position.moved(0, 1) {
+                if let Some(pos) = king.moved(0, 1) {
                     if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
                         return true;
                     }
                 }
 
-                if let Some(pos) = king.position.moved(-1, 1) {
+                if let Some(pos) = king.moved(-1, 1) {
                     if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
                         return true;
                     }
                 }
 
-                if let Some(pos) = king.position.moved(-1, 0) {
+                if let Some(pos) = king.moved(-1, 0) {
                     if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
                         return true;
                     }
@@ -614,7 +615,10 @@ mod tests {
             .remove_piece_at(Pos::from_algebraic("c1").unwrap())
             .unwrap();
 
-        let legal_moves = position.white_king.unwrap().get_legal_moves(&position);
+        let legal_moves = position
+            .get_piece_at(position.white_king.unwrap())
+            .unwrap()
+            .get_legal_moves(&position);
 
         assert!(legal_moves.get(Pos::from_algebraic("b1").unwrap()));
     }
@@ -628,7 +632,10 @@ mod tests {
             .remove_piece_at(Pos::from_algebraic("b1").unwrap())
             .unwrap();
 
-        let legal_moves = position.white_king.unwrap().get_legal_moves(&position);
+        let legal_moves = position
+            .get_piece_at(position.white_king.unwrap())
+            .unwrap()
+            .get_legal_moves(&position);
 
         assert!(!legal_moves.get(Pos::from_algebraic("b1").unwrap()));
     }
@@ -648,7 +655,10 @@ mod tests {
             .remove_piece_at(Pos::from_algebraic("g1").unwrap())
             .unwrap();
 
-        let legal_moves = position.white_king.unwrap().get_legal_moves(&position);
+        let legal_moves = position
+            .get_piece_at(position.white_king.unwrap())
+            .unwrap()
+            .get_legal_moves(&position);
 
         assert!(legal_moves.get(Pos::from_algebraic("f1").unwrap()));
     }
@@ -665,7 +675,10 @@ mod tests {
             .remove_piece_at(Pos::from_algebraic("f1").unwrap())
             .unwrap();
 
-        let legal_moves = position.white_king.unwrap().get_legal_moves(&position);
+        let legal_moves = position
+            .get_piece_at(position.white_king.unwrap())
+            .unwrap()
+            .get_legal_moves(&position);
 
         assert!(!legal_moves.get(Pos::from_algebraic("f1").unwrap()));
     }
@@ -677,9 +690,10 @@ mod tests {
         )
         .unwrap();
 
-        let king = position.white_king.unwrap();
-
-        let legal_moves = king.get_legal_moves(&position);
+        let legal_moves = position
+            .get_piece_at(position.white_king.unwrap())
+            .unwrap()
+            .get_legal_moves(&position);
 
         println!("{}", legal_moves);
     }

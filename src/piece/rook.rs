@@ -65,6 +65,7 @@ static ATTACK_MAPS: LazyLock<[Bitboard; 64]> = LazyLock::new(|| {
     maps
 });
 
+#[inline(always)]
 pub fn attack_map(pos: Pos) -> &'static Bitboard {
     &ATTACK_MAPS[pos.0 as usize]
 }
