@@ -1,7 +1,7 @@
 pub mod extended_fen;
 mod fen;
 
-use std::{hash::Hash, mem};
+use std::{cell::RefCell, hash::Hash, mem};
 
 use colored::Colorize;
 
@@ -81,6 +81,8 @@ pub struct Position {
     pub black_king: Option<Pos>,
 
     pub true_active_color: Color,
+
+    pub all_legal_moves: RefCell<Option<Vec<PieceMove>>>,
 }
 
 /// Given a list of pieces, returns a bitboard with the positions of the pieces for the given color.
@@ -185,6 +187,7 @@ impl Position {
             black_king,
             all_map,
             true_active_color: Color::White,
+            all_legal_moves: RefCell::new(None),
         }
     }
 
@@ -236,6 +239,8 @@ impl Position {
         self.white_map = to_bitboard(&self.white_pieces);
         self.black_map = to_bitboard(&self.black_pieces);
         self.all_map = self.white_map | self.black_map;
+
+        *self.all_legal_moves.borrow_mut() = None;
     }
 
     #[inline(always)]
@@ -507,6 +512,10 @@ impl Position {
         &self,
         game_type: GameType,
     ) -> Result<Vec<PieceMove>, anyhow::Error> {
+        if let Some(all_legal_moves) = self.all_legal_moves.borrow().as_ref() {
+            return Ok(all_legal_moves.clone());
+        }
+
         let possible_moves = self.get_all_moves_unchecked(game_type);
         let mut moves = Vec::with_capacity(possible_moves.len());
 
@@ -540,6 +549,8 @@ impl Position {
             position.en_passant = prev_en_passant;
             position.castling_rights = prev_castling_rights;
         }
+
+        *self.all_legal_moves.borrow_mut() = Some(moves.clone());
 
         Ok(moves)
     }
