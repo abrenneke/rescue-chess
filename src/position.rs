@@ -231,17 +231,26 @@ impl Position {
             self.black_king = Some(black_king.invert());
         }
 
-        self.calc_changes();
-    }
+        self.invert_position_lookup();
 
-    /// When any piece has changed, this function should be called to
-    /// recalculate the bitboards and position lookup.
-    pub fn calc_changes(&mut self) {
         self.white_map = to_bitboard(&self.white_pieces);
         self.black_map = to_bitboard(&self.black_pieces);
         self.all_map = self.white_map | self.black_map;
+    }
 
-        self.position_lookup = calc_position_lookup(&self.white_pieces, &self.black_pieces);
+    #[inline(always)]
+    fn invert_position_lookup(&mut self) {
+        let mut new_lookup = [None; 64];
+
+        for pos in self.all_map.into_iter() {
+            let inverted_pos = pos.invert();
+            if let Some(idx) = self.position_lookup[pos.0 as usize] {
+                new_lookup[inverted_pos.0 as usize] =
+                    Some(if idx >= 16 { idx - 16 } else { idx + 16 });
+            }
+        }
+
+        self.position_lookup = new_lookup;
     }
 
     /// Returns a new GamePosition with the colors and board flipped.
