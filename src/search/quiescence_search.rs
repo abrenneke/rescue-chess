@@ -84,12 +84,22 @@ pub fn quiescence_search(
 
     // Get only capture moves
     let mut moves = position.get_all_legal_moves(params.game_type).unwrap();
-    moves.retain(|mv| mv.is_capture() || matches!(mv.move_type, MoveType::Promotion(_)));
+    moves.retain(|mv| {
+        mv.is_capture()
+            || matches!(
+                mv.move_type,
+                MoveType::Normal {
+                    promoted_to: Some(_),
+                    ..
+                }
+            )
+    });
 
     moves.sort_by_key(|mv| {
-        if let MoveType::Capture {
-            captured,
+        if let MoveType::Normal {
+            captured: Some(captured),
             captured_holding,
+            ..
         } = mv.move_type
         {
             // Higher score = better move

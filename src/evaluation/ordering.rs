@@ -71,6 +71,7 @@ fn score_move(
             score += 25_000;
 
             let escape_moves = position.get_all_legal_moves(params.game_type).unwrap();
+            // let escape_moves = position.count_pseudolegal_moves();
             if escape_moves.len() <= 2 {
                 score += 15_000;
             }
@@ -85,9 +86,10 @@ fn score_move(
         // Add MVV-LVA scoring
         // Victim value - try to capture most valuable pieces first
 
-        if let MoveType::Capture {
-            captured,
+        if let MoveType::Normal {
+            captured: Some(captured),
             captured_holding,
+            ..
         } = mv.move_type
         {
             score += piece_value(captured) * 100;
@@ -121,7 +123,11 @@ fn score_move(
     }
 
     // 4. Special moves
-    if let MoveType::Promotion(_) = mv.move_type {
+    if let MoveType::Normal {
+        promoted_to: Some(_),
+        ..
+    } = mv.move_type
+    {
         score += 15000;
     }
 

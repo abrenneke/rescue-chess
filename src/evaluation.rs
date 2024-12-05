@@ -5,7 +5,7 @@ use crate::{
     piece_move::GameType, search::alpha_beta::SearchParams, Color, PieceType, Pos, Position,
 };
 
-pub fn evaluate_position(board: &Position, game_type: GameType, _params: &SearchParams) -> i32 {
+pub fn evaluate_position(board: &Position, game_type: GameType, params: &SearchParams) -> i32 {
     let mut score = 0;
 
     let inverted = board.inverted();
@@ -44,32 +44,42 @@ pub fn evaluate_position(board: &Position, game_type: GameType, _params: &Search
         }
     }
 
-    if has_bishop_pair(board, Color::White) {
-        score += 50;
-    }
+    if params.features.evaluate_bishop_pairs {
+        if has_bishop_pair(board, Color::White) {
+            score += 50;
+        }
 
-    if has_bishop_pair(board, Color::Black) {
-        score -= 50;
+        if has_bishop_pair(board, Color::Black) {
+            score -= 50;
+        }
     }
 
     // Evaluate pawn structure
-    let white_pawn_score = evaluate_pawn_structure(board);
-    let black_pawn_score = evaluate_pawn_structure(&inverted);
-    score += white_pawn_score - black_pawn_score;
+    if params.features.evaluate_pawn_structure {
+        let white_pawn_score = evaluate_pawn_structure(board);
+        let black_pawn_score = evaluate_pawn_structure(&inverted);
+        score += white_pawn_score - black_pawn_score;
+    }
 
     // King safety evaluation
-    let white_king_safety = evaluate_king_safety(board);
-    let black_king_safety = evaluate_king_safety(&inverted);
-    score += white_king_safety - black_king_safety;
+    if params.features.evaluate_king_safety {
+        let white_king_safety = evaluate_king_safety(board);
+        let black_king_safety = evaluate_king_safety(&inverted);
+        score += white_king_safety - black_king_safety;
+    }
 
     // Mobility evaluation
-    let white_mobility = evaluate_mobility(board, game_type);
-    let black_mobility = evaluate_mobility(&inverted, game_type);
-    score += white_mobility - black_mobility;
+    if params.features.evaluate_mobility {
+        let white_mobility = evaluate_mobility(board, game_type);
+        let black_mobility = evaluate_mobility(&inverted, game_type);
+        score += white_mobility - black_mobility;
+    }
 
-    let white_coordination = evaluate_piece_coordination(board);
-    let black_coordination = evaluate_piece_coordination(&inverted);
-    score += white_coordination - black_coordination;
+    if params.features.evaluate_piece_coordination {
+        let white_coordination = evaluate_piece_coordination(board);
+        let black_coordination = evaluate_piece_coordination(&inverted);
+        score += white_coordination - black_coordination;
+    }
 
     score
 }

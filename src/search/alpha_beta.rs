@@ -47,6 +47,12 @@ pub struct Features {
     pub enable_killer_moves: bool,
     pub enable_null_move_pruning: bool,
     pub enable_history: bool,
+
+    pub evaluate_bishop_pairs: bool,
+    pub evaluate_pawn_structure: bool,
+    pub evaluate_king_safety: bool,
+    pub evaluate_mobility: bool,
+    pub evaluate_piece_coordination: bool,
 }
 
 impl Default for Features {
@@ -58,6 +64,12 @@ impl Default for Features {
             enable_killer_moves: true,
             enable_null_move_pruning: true,
             enable_history: true,
+
+            evaluate_bishop_pairs: true,
+            evaluate_pawn_structure: true,
+            evaluate_king_safety: true,
+            evaluate_mobility: false, // slow, over doubles search time
+            evaluate_piece_coordination: true,
         }
     }
 }
@@ -1037,7 +1049,7 @@ pub mod tests {
         let params = SearchParams {
             depth: 4,
             game_type: GameType::Classic,
-            debug_print_verbose: true,
+            debug_print_verbose: false,
             ..Default::default()
         };
 

@@ -6,6 +6,7 @@ pub mod knight;
 pub mod occupancy;
 pub mod pawn;
 pub mod queen;
+pub mod rescue_drop;
 pub mod rook;
 
 pub use bishop::Bishop;
@@ -72,6 +73,13 @@ impl Color {
         }
     }
 }
+
+pub static PAWN_PROMOTION_TYPES: [PieceType; 4] = [
+    PieceType::Queen,
+    PieceType::Rook,
+    PieceType::Bishop,
+    PieceType::Knight,
+];
 
 #[derive(Debug, PartialEq, Clone, Hash, Eq, Serialize)]
 pub struct Piece {

@@ -35,66 +35,22 @@ pub enum GameType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value")]
 pub enum MoveType {
-    /// A move that has not been classified yet
-    Unknown,
-
     /// A move that does not capture an enemy piece
-    Normal,
+    Normal {
+        captured: Option<PieceType>,
+        captured_pos: Option<Pos>,
+        captured_holding: Option<PieceType>,
 
-    /// A move that maybe moves to a position, then rescues and adjacent piece at pos
-    NormalAndRescue(Pos),
+        rescued_pos: Option<Pos>,
+        dropped_pos: Option<Pos>,
 
-    /// A move that maybe moves to a position, then drops a rescued piece at pos
-    NormalAndDrop {
-        pos: Pos,
         promoted_to: Option<PieceType>,
-    },
-
-    /// A move that captures an enemy piece
-    /// The PieceType is the type of piece that is captured
-    Capture {
-        captured: PieceType,
-        captured_holding: Option<PieceType>,
-    },
-
-    /// A move that captures an enemy piece and rescues a friendly piece
-    CaptureAndRescue {
-        captured_type: PieceType,
-        rescued_pos: Pos,
-        captured_holding: Option<PieceType>,
-    },
-
-    /// A move that captures an enemy piece and drops a rescued piece
-    CaptureAndDrop {
-        captured_type: PieceType,
-        drop_pos: Pos,
-        promoted_to: Option<PieceType>,
-        captured_holding: Option<PieceType>,
-    },
-
-    /// A move that captures an enemy piece en passant.
-    /// The Pos is the position of the captured pawn.
-    EnPassant {
-        captured_pos: Pos,
-        captured: PieceType,
-        captured_holding: Option<PieceType>,
+        dropped_promoted_to: Option<PieceType>,
     },
 
     /// A move that castles the king
     /// The first Pos is the position of the king, the second is the position of the rook
     Castle { king: Pos, rook: Pos },
-
-    /// A move that promotes a pawn
-    /// The PieceType is the type of piece the pawn is promoted to
-    Promotion(PieceType),
-
-    /// A move that promotes a pawn and captures an enemy piece
-    /// The first PieceType is the type of piece the pawn is promoted to, the second is the type of piece the pawn captures
-    CapturePromotion {
-        captured: PieceType,
-        promoted_to: PieceType,
-        captured_holding: Option<PieceType>,
-    },
 }
 
 impl PieceMove {
@@ -104,39 +60,23 @@ impl PieceMove {
         self.to = self.to.invert();
 
         match &mut self.move_type {
-            MoveType::EnPassant {
+            MoveType::Normal {
                 captured_pos,
+                rescued_pos,
+                dropped_pos,
                 captured: _,
                 captured_holding: _,
+                dropped_promoted_to: _,
+                promoted_to: _,
             } => {
-                *captured_pos = captured_pos.invert();
+                *captured_pos = captured_pos.map(|pos| pos.invert());
+                *rescued_pos = rescued_pos.map(|pos| pos.invert());
+                *dropped_pos = dropped_pos.map(|pos| pos.invert());
             }
             MoveType::Castle { king, rook } => {
                 *king = king.invert();
                 *rook = rook.invert();
             }
-            MoveType::NormalAndRescue(pos) => {
-                *pos = pos.invert();
-            }
-            MoveType::CaptureAndRescue {
-                captured_type: _,
-                rescued_pos,
-                captured_holding: _,
-            } => {
-                *rescued_pos = rescued_pos.invert();
-            }
-            MoveType::NormalAndDrop { pos, .. } => {
-                *pos = pos.invert();
-            }
-            MoveType::CaptureAndDrop {
-                drop_pos,
-                captured_holding: _,
-                captured_type: _,
-                promoted_to: _,
-            } => {
-                *drop_pos = drop_pos.invert();
-            }
-            _ => {}
         }
     }
 
@@ -149,27 +89,43 @@ impl PieceMove {
 
     pub fn is_capture(&self) -> bool {
         match self.move_type {
-            MoveType::Capture { .. } => true,
-            MoveType::CaptureAndRescue { .. } => true,
-            MoveType::CaptureAndDrop { .. } => true,
-            MoveType::EnPassant { .. } => true,
-            MoveType::CapturePromotion { .. } => true,
+            MoveType::Normal {
+                captured: Some(_), ..
+            } => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_rescue_or_drop(&self) -> bool {
+        match self.move_type {
+            MoveType::Normal {
+                rescued_pos: Some(_),
+                ..
+            } => true,
+            MoveType::Normal {
+                dropped_pos: Some(_),
+                ..
+            } => true,
             _ => false,
         }
     }
 
     pub fn is_rescue(&self) -> bool {
         match self.move_type {
-            MoveType::NormalAndRescue(_) => true,
-            MoveType::CaptureAndRescue { .. } => true,
+            MoveType::Normal {
+                rescued_pos: Some(_),
+                ..
+            } => true,
             _ => false,
         }
     }
 
     pub fn is_drop(&self) -> bool {
         match self.move_type {
-            MoveType::NormalAndDrop { .. } => true,
-            MoveType::CaptureAndDrop { .. } => true,
+            MoveType::Normal {
+                dropped_pos: Some(_),
+                ..
+            } => true,
             _ => false,
         }
     }
@@ -199,7 +155,6 @@ impl PieceMove {
         game_type: GameType,
     ) -> Result<PieceMove, anyhow::Error> {
         let parsed = parser::ParsedMove::from_uci(notation, position, false)?;
-        println!("Parsed move {}: {:?}", notation, parsed);
         Self::from_algebraic_impl(position, parsed, game_type)
     }
 
@@ -209,7 +164,6 @@ impl PieceMove {
         game_type: GameType,
     ) -> Result<PieceMove, anyhow::Error> {
         let parsed = parser::ParsedMove::from_uci(notation_inverted, position, true)?;
-        println!("Parsed inverted move {}: {:?}", notation_inverted, parsed);
         Self::from_algebraic_impl(position, parsed, game_type)
     }
 
@@ -221,71 +175,75 @@ impl PieceMove {
         // Get all legal moves for pieces of this type
         let legal_moves = position.get_all_legal_moves(game_type)?;
 
-        let mut matching_moves: Vec<PieceMove> =
-            legal_moves
-                .into_iter()
-                .filter(|mv| {
-                    // Helper function to check if move matches rescue/drop pattern
-                    let rescue_drop_matches = match (&parsed.rescue_drop, &mv.move_type) {
-                        // No rescue/drop specified in notation
-                        (None, MoveType::Normal)
-                        | (None, MoveType::Capture { .. })
-                        | (None, MoveType::Castle { .. })
-                        | (None, MoveType::EnPassant { .. })
-                        | (None, MoveType::Promotion(_))
-                        | (None, MoveType::CapturePromotion { .. }) => true,
+        let mut matching_moves: Vec<PieceMove> = legal_moves
+            .into_iter()
+            .filter(|mv| {
+                // Helper function to check if move matches rescue/drop pattern
+                let rescue_drop_matches = match (&parsed.rescue_drop, &mv.move_type) {
+                    // No rescue/drop specified in notation
+                    (
+                        None,
+                        MoveType::Normal {
+                            dropped_pos: None,
+                            rescued_pos: None,
+                            ..
+                        },
+                    ) => true,
+                    (None, MoveType::Castle { .. }) => true,
 
-                        // Rescue specified in notation
-                        (Some(RescueOrDrop::Rescue), MoveType::NormalAndRescue(pos))
-                        | (
-                            Some(RescueOrDrop::Rescue),
-                            MoveType::CaptureAndRescue {
-                                rescued_pos: pos, ..
-                            },
-                        ) => {
-                            // If position specified in notation, must match
-                            match (parsed.rescue_drop_file, parsed.rescue_drop_rank) {
-                                (Some(file), Some(rank)) => {
-                                    pos.get_col() == file && pos.get_row() == rank
-                                }
-                                (Some(file), None) => pos.get_col() == file,
-                                (None, Some(rank)) => pos.get_row() == rank,
-                                (None, None) => true,
+                    // Rescue specified in notation
+                    (
+                        Some(RescueOrDrop::Rescue),
+                        MoveType::Normal {
+                            rescued_pos: Some(pos),
+                            ..
+                        },
+                    ) => {
+                        // If position specified in notation, must match
+                        match (parsed.rescue_drop_file, parsed.rescue_drop_rank) {
+                            (Some(file), Some(rank)) => {
+                                pos.get_col() == file && pos.get_row() == rank
                             }
+                            (Some(file), None) => pos.get_col() == file,
+                            (None, Some(rank)) => pos.get_row() == rank,
+                            (None, None) => true,
                         }
+                    }
 
-                        // Drop specified in notation
-                        (Some(RescueOrDrop::Drop), MoveType::NormalAndDrop { pos, .. })
-                        | (
-                            Some(RescueOrDrop::Drop),
-                            MoveType::CaptureAndDrop { drop_pos: pos, .. },
-                        ) => {
-                            // If position specified in notation, must match
-                            match (parsed.rescue_drop_file, parsed.rescue_drop_rank) {
-                                (Some(file), Some(rank)) => {
-                                    pos.get_col() == file && pos.get_row() == rank
-                                }
-                                (Some(file), None) => pos.get_col() == file,
-                                (None, Some(rank)) => pos.get_row() == rank,
-                                (None, None) => true,
+                    // Drop specified in notation
+                    (
+                        Some(RescueOrDrop::Drop),
+                        MoveType::Normal {
+                            dropped_pos: Some(pos),
+                            ..
+                        },
+                    ) => {
+                        // If position specified in notation, must match
+                        match (parsed.rescue_drop_file, parsed.rescue_drop_rank) {
+                            (Some(file), Some(rank)) => {
+                                pos.get_col() == file && pos.get_row() == rank
                             }
+                            (Some(file), None) => pos.get_col() == file,
+                            (None, Some(rank)) => pos.get_row() == rank,
+                            (None, None) => true,
                         }
+                    }
 
-                        // Mismatch in rescue/drop
-                        _ => false,
-                    };
+                    // Mismatch in rescue/drop
+                    _ => false,
+                };
 
-                    // Full move matching logic
-                    let res = mv.piece_type == parsed.piece_type &&  // Match piece type
+                // Full move matching logic
+                let res = mv.piece_type == parsed.piece_type &&  // Match piece type
                         mv.to == Pos::xy(parsed.to_file, parsed.to_rank) &&  // Match destination square
                         (!parsed.is_capture || mv.is_capture()) &&  // Match capture flag if specified
                         parsed.from_file.map_or(true, |file| mv.from.get_col() == file) &&  // Match source file if specified
                         parsed.from_rank.map_or(true, |rank| mv.from.get_row() == rank) &&  // Match source rank if specified
                         rescue_drop_matches; // Match rescue/drop pattern if specified
 
-                    res
-                })
-                .collect();
+                res
+            })
+            .collect();
 
         // If no moves match, the notation is invalid
         if matching_moves.is_empty() {
@@ -327,33 +285,21 @@ impl PieceMove {
 
     pub fn to_uci(&self) -> String {
         match self.move_type {
-            MoveType::Normal => format!("{}{}", self.from.to_algebraic(), self.to.to_algebraic()),
-            MoveType::Capture { .. } => {
-                format!("{}{}", self.from.to_algebraic(), self.to.to_algebraic())
+            MoveType::Normal { promoted_to, .. } => {
+                if let Some(promoted_to) = promoted_to {
+                    format!(
+                        "{}{}{}",
+                        self.from.to_algebraic(),
+                        self.to.to_algebraic(),
+                        promoted_to.to_algebraic(Color::White),
+                    )
+                } else {
+                    format!("{}{}", self.from.to_algebraic(), self.to.to_algebraic())
+                }
             }
             MoveType::Castle { .. } => {
                 format!("{}{}", self.from.to_algebraic(), self.to.to_algebraic())
             }
-            MoveType::EnPassant { .. } => {
-                format!("{}{}", self.from.to_algebraic(), self.to.to_algebraic())
-            }
-            MoveType::Promotion(piece) => format!(
-                "{}{}{}",
-                self.from.to_algebraic(),
-                self.to.to_algebraic(),
-                piece.to_algebraic(Color::White), // ??
-            ),
-            MoveType::CapturePromotion {
-                captured: _,
-                promoted_to,
-                captured_holding: _,
-            } => format!(
-                "{}{}{}",
-                self.from.to_algebraic(),
-                self.to.to_algebraic(),
-                promoted_to.to_algebraic(Color::White), // ??
-            ),
-            _ => unimplemented!(),
         }
     }
 }
@@ -384,14 +330,8 @@ impl std::fmt::Display for PieceMove {
             }
         )?;
 
-        if let MoveType::Capture { .. } = &self.move_type {
-            write!(f, "x")?;
-        } else if let MoveType::CaptureAndDrop { .. } = &self.move_type {
-            write!(f, "x")?;
-        } else if let MoveType::CaptureAndRescue {
-            captured_type: _,
-            rescued_pos: _,
-            captured_holding: _,
+        if let MoveType::Normal {
+            captured: Some(_), ..
         } = &self.move_type
         {
             write!(f, "x")?;
@@ -399,43 +339,31 @@ impl std::fmt::Display for PieceMove {
 
         write!(f, "{}", self.to.to_algebraic())?;
 
-        // s for save, d for drop
-        if let MoveType::NormalAndRescue(pos) = self.move_type {
-            write!(f, "S{}", pos.to_algebraic())?;
-        } else if let MoveType::NormalAndDrop { pos, promoted_to } = self.move_type {
-            if let Some(promoted_to) = promoted_to {
-                write!(
-                    f,
-                    "D{}{}",
-                    pos.to_algebraic(),
-                    promoted_to.to_algebraic(Color::White)
-                )?;
-            } else {
-                write!(f, "D{}", pos.to_algebraic())?;
-            }
-        } else if let MoveType::CaptureAndRescue {
-            captured_type: _,
-            rescued_pos,
-            captured_holding: _,
-        } = self.move_type
+        if let MoveType::Normal {
+            promoted_to: Some(promoted_to),
+            ..
+        } = &self.move_type
+        {
+            write!(f, "={}", promoted_to.to_algebraic(Color::White))?;
+        }
+
+        if let MoveType::Normal {
+            rescued_pos: Some(rescued_pos),
+            ..
+        } = &self.move_type
         {
             write!(f, "S{}", rescued_pos.to_algebraic())?;
-        } else if let MoveType::CaptureAndDrop {
-            drop_pos,
-            promoted_to,
-            captured_type: _,
-            captured_holding: _,
-        } = self.move_type
+        }
+
+        if let MoveType::Normal {
+            dropped_pos: Some(dropped_pos),
+            dropped_promoted_to,
+            ..
+        } = &self.move_type
         {
-            if let Some(promoted_to) = promoted_to {
-                write!(
-                    f,
-                    "D{}{}",
-                    drop_pos.to_algebraic(),
-                    promoted_to.to_algebraic(Color::White)
-                )?;
-            } else {
-                write!(f, "D{}", drop_pos.to_algebraic())?;
+            write!(f, "D{}", dropped_pos.to_algebraic())?;
+            if let Some(dropped_promoted_to) = dropped_promoted_to {
+                write!(f, "{}", dropped_promoted_to.to_algebraic(Color::White))?;
             }
         }
 
@@ -462,7 +390,7 @@ mod tests {
         assert_eq!(mv.piece_type, PieceType::Pawn);
         assert_eq!(mv.from, Pos::from_algebraic("e2").unwrap());
         assert_eq!(mv.to, Pos::from_algebraic("e4").unwrap());
-        assert!(matches!(mv.move_type, MoveType::Normal));
+        assert!(matches!(mv.move_type, MoveType::Normal { .. }));
     }
 
     #[test]
@@ -474,7 +402,7 @@ mod tests {
         assert_eq!(mv.piece_type, PieceType::Knight);
         assert_eq!(mv.from, Pos::from_algebraic("g1").unwrap());
         assert_eq!(mv.to, Pos::from_algebraic("f3").unwrap());
-        assert!(matches!(mv.move_type, MoveType::Normal));
+        assert!(matches!(mv.move_type, MoveType::Normal { .. }));
     }
 
     #[test]
@@ -490,9 +418,10 @@ mod tests {
         assert_eq!(mv.to, Pos::from_algebraic("d5").unwrap());
         assert!(matches!(
             mv.move_type,
-            MoveType::Capture {
-                captured: PieceType::Pawn,
-                captured_holding: None
+            MoveType::Normal {
+                captured: Some(PieceType::Pawn),
+                captured_holding: None,
+                ..
             }
         ));
     }
@@ -532,7 +461,7 @@ mod tests {
         let mv = PieceMove::from_algebraic(&position, "Qh5+", GameType::Rescue).unwrap();
         assert_eq!(mv.piece_type, PieceType::Queen);
         assert_eq!(mv.to, Pos::from_algebraic("h5").unwrap());
-        assert!(matches!(mv.move_type, MoveType::Normal));
+        assert!(matches!(mv.move_type, MoveType::Normal { .. }));
     }
 
     // #[test]
@@ -568,14 +497,14 @@ mod tests {
         assert_eq!(mv.piece_type, PieceType::Pawn);
         assert_eq!(mv.from, Pos::from_algebraic("e2").unwrap());
         assert_eq!(mv.to, Pos::from_algebraic("e4").unwrap());
-        assert!(matches!(mv.move_type, MoveType::Normal));
+        assert!(matches!(mv.move_type, MoveType::Normal { .. }));
 
         // Test d3
         let mv = PieceMove::from_algebraic(&position, "d3", GameType::Rescue).unwrap();
         assert_eq!(mv.piece_type, PieceType::Pawn);
         assert_eq!(mv.from, Pos::from_algebraic("d2").unwrap());
         assert_eq!(mv.to, Pos::from_algebraic("d3").unwrap());
-        assert!(matches!(mv.move_type, MoveType::Normal));
+        assert!(matches!(mv.move_type, MoveType::Normal { .. }));
     }
 
     #[test]
@@ -606,7 +535,7 @@ mod tests {
         assert_eq!(mv.piece_type, PieceType::Knight);
         assert_eq!(mv.from, Pos::from_algebraic("g1").unwrap());
         assert_eq!(mv.to, Pos::from_algebraic("f3").unwrap());
-        assert!(matches!(mv.move_type, MoveType::Normal));
+        assert!(matches!(mv.move_type, MoveType::Normal { .. }));
     }
 
     #[test]
@@ -731,13 +660,13 @@ mod tests {
         assert_eq!(mv.from, Pos::from_algebraic("e2").unwrap());
         assert_eq!(mv.to, Pos::from_algebraic("e2").unwrap()); // Piece stays in place for rescue
         assert!(
-            matches!(mv.move_type, MoveType::NormalAndRescue(pos) if pos == Pos::from_algebraic("f2").unwrap())
+            matches!(mv.move_type, MoveType::Normal{ rescued_pos: Some(pos), .. } if pos == Pos::from_algebraic("f2").unwrap())
         );
 
         // Test partial specifications
         let mv = PieceMove::from_algebraic(&position, "e2Sf", GameType::Rescue).unwrap();
         assert!(
-            matches!(mv.move_type, MoveType::NormalAndRescue(pos) if pos == Pos::from_algebraic("f2").unwrap())
+            matches!(mv.move_type, MoveType::Normal{ rescued_pos: Some(pos), .. } if pos == Pos::from_algebraic("f2").unwrap())
         );
 
         let mv = PieceMove::from_algebraic(&position, "e2S2", GameType::Rescue);
@@ -756,7 +685,7 @@ mod tests {
         assert_eq!(mv.from, Pos::from_algebraic("g1").unwrap());
         assert_eq!(mv.to, Pos::from_algebraic("f3").unwrap());
         assert!(
-            matches!(mv.move_type, MoveType::NormalAndRescue(pos) if pos == Pos::from_algebraic("f2").unwrap())
+            matches!(mv.move_type, MoveType::Normal{ rescued_pos: Some(pos), .. } if pos == Pos::from_algebraic("f2").unwrap())
         );
     }
 }
