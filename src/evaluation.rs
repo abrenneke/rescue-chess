@@ -12,32 +12,36 @@ pub fn evaluate_position(board: &Position, game_type: GameType, _params: &Search
 
     // Bonuses for white pieces
     for piece in board.white_pieces.iter() {
-        let value = piece_value(piece.piece_type);
-        let piece_score = value + piece.square_bonus();
+        if let Some(piece) = piece {
+            let value = piece_value(piece.piece_type);
+            let piece_score = value + piece.square_bonus();
 
-        score += piece_score;
+            score += piece_score;
 
-        let holding_value = match piece.holding {
-            Some(piece_type) => piece_value(piece_type),
-            None => 0,
-        };
+            let holding_value = match piece.holding {
+                Some(piece_type) => piece_value(piece_type),
+                None => 0,
+            };
 
-        score += holding_value;
+            score += holding_value;
+        }
     }
 
     // Penalties for black pieces
     for piece in inverted.white_pieces.iter() {
-        let value = piece_value(piece.piece_type);
-        let piece_score = value + piece.square_bonus();
+        if let Some(piece) = piece {
+            let value = piece_value(piece.piece_type);
+            let piece_score = value + piece.square_bonus();
 
-        score -= piece_score;
+            score -= piece_score;
 
-        let holding_value = match piece.holding {
-            Some(piece_type) => piece_value(piece_type),
-            None => 0,
-        };
+            let holding_value = match piece.holding {
+                Some(piece_type) => piece_value(piece_type),
+                None => 0,
+            };
 
-        score -= holding_value;
+            score -= holding_value;
+        }
     }
 
     if has_bishop_pair(board, Color::White) {
@@ -81,11 +85,13 @@ fn has_bishop_pair(position: &Position, color: Color) -> bool {
     };
 
     for piece in pieces.iter() {
-        if piece.color == color && piece.piece_type == PieceType::Bishop {
-            if (piece.position.0 + piece.position.get_row()) % 2 == 0 {
-                light_square_bishop = true;
-            } else {
-                dark_square_bishop = true;
+        if let Some(piece) = piece {
+            if piece.color == color && piece.piece_type == PieceType::Bishop {
+                if (piece.position.0 + piece.position.get_row()) % 2 == 0 {
+                    light_square_bishop = true;
+                } else {
+                    dark_square_bishop = true;
+                }
             }
         }
     }
@@ -100,14 +106,18 @@ fn evaluate_pawn_structure(position: &Position) -> i32 {
     let mut black_pawns = vec![];
 
     for piece in position.white_pieces.iter() {
-        if piece.piece_type == PieceType::Pawn {
-            white_pawns.push(piece.position);
+        if let Some(piece) = piece {
+            if piece.piece_type == PieceType::Pawn {
+                white_pawns.push(piece.position);
+            }
         }
     }
 
     for piece in position.black_pieces.iter() {
-        if piece.piece_type == PieceType::Pawn {
-            black_pawns.push(piece.position);
+        if let Some(piece) = piece {
+            if piece.piece_type == PieceType::Pawn {
+                black_pawns.push(piece.position);
+            }
         }
     }
 
@@ -209,16 +219,18 @@ fn evaluate_piece_coordination(position: &Position) -> i32 {
 
     // Count attacks on each square
     for piece in &position.white_pieces {
-        let legal_moves = piece.get_legal_moves(position);
-        for mv in legal_moves {
-            let col = mv.get_col() as usize;
-            let row = mv.get_row() as usize;
-            attack_map[col][row] += 1;
+        if let Some(piece) = piece {
+            let legal_moves = piece.get_legal_moves(position);
+            for mv in legal_moves {
+                let col = mv.get_col() as usize;
+                let row = mv.get_row() as usize;
+                attack_map[col][row] += 1;
 
-            // Bonus for pieces protecting each other
-            if let Some(defender) = position.get_piece_at(mv) {
-                if defender.color == piece.color {
-                    score += 10;
+                // Bonus for pieces protecting each other
+                if let Some(defender) = position.get_piece_at(mv) {
+                    if defender.color == piece.color {
+                        score += 10;
+                    }
                 }
             }
         }

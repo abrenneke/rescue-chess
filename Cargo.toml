@@ -24,9 +24,6 @@ tracing-subscriber = "0.3.19"
 name = "get_best_move"
 
 [[bin]]
-name = "random_position"
-
-[[bin]]
 name = "self_play"
 
 [[bin]]

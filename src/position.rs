@@ -48,10 +48,10 @@ impl Default for CastlingRights {
 #[derive(Debug, Clone, Eq)]
 pub struct Position {
     /// The pieces on the board
-    pub white_pieces: arrayvec::ArrayVec<Piece, 16>,
+    pub white_pieces: [Option<Piece>; 16],
 
     /// The pieces on the board
-    pub black_pieces: arrayvec::ArrayVec<Piece, 16>,
+    pub black_pieces: [Option<Piece>; 16],
 
     // Active color is always white for our purposes
     pub castling_rights: CastlingRights,
@@ -85,30 +85,52 @@ pub struct Position {
 
 /// Given a list of pieces, returns a bitboard with the positions of the pieces for the given color.
 #[inline]
-fn to_bitboard(pieces: &[Piece]) -> Bitboard {
+fn to_bitboard(pieces: &[Option<Piece>]) -> Bitboard {
     let mut bb = Bitboard::new();
     for piece in pieces.iter() {
-        bb.set(piece.position);
+        if let Some(piece) = piece {
+            bb.set(piece.position);
+        }
     }
     bb
 }
 
 /// Calculates the position_lookup by iterating over the pieces and setting the
 /// index of the piece in the pieces vector at the position of the piece.
-fn calc_position_lookup(white_pieces: &[Piece], black_pieces: &[Piece]) -> [Option<u8>; 64] {
+fn calc_position_lookup(
+    white_pieces: &[Option<Piece>],
+    black_pieces: &[Option<Piece>],
+) -> [Option<u8>; 64] {
     let mut position_lookup = [None; 64];
 
     for i in 0..white_pieces.len() {
         let piece = &white_pieces[i];
-        position_lookup[piece.position.0 as usize] = Some(i as u8);
+
+        if let Some(piece) = piece {
+            position_lookup[piece.position.0 as usize] = Some(i as u8);
+        }
     }
 
     for i in 0..black_pieces.len() {
         let piece = &black_pieces[i];
-        position_lookup[piece.position.0 as usize] = Some((i as u8) + 16);
+
+        if let Some(piece) = piece {
+            position_lookup[piece.position.0 as usize] = Some((i as u8) + 16);
+        }
     }
 
     position_lookup
+}
+
+fn add_to_slot_map<T, const C: usize>(map: &mut [Option<T>; C], value: T) -> u8 {
+    for i in 0..C {
+        if map[i].is_none() {
+            map[i] = Some(value);
+            return i as u8;
+        }
+    }
+
+    panic!("No more slots in map");
 }
 
 impl Position {
@@ -120,17 +142,16 @@ impl Position {
         halfmove_clock: u8,
         fullmove_number: u16,
     ) -> Position {
-        let white_pieces: arrayvec::ArrayVec<Piece, 16> = pieces
-            .iter()
-            .filter(|piece| piece.color == Color::White)
-            .cloned()
-            .collect();
+        let mut white_pieces = [const { None }; 16];
+        let mut black_pieces = [const { None }; 16];
 
-        let black_pieces: arrayvec::ArrayVec<Piece, 16> = pieces
-            .iter()
-            .filter(|piece| piece.color == Color::Black)
-            .cloned()
-            .collect();
+        for piece in pieces {
+            if piece.color == Color::White {
+                add_to_slot_map(&mut white_pieces, piece);
+            } else {
+                add_to_slot_map(&mut black_pieces, piece);
+            }
+        }
 
         let white_map = to_bitboard(&white_pieces);
         let black_map = to_bitboard(&black_pieces);
@@ -140,11 +161,13 @@ impl Position {
 
         let white_king = white_pieces
             .iter()
+            .filter_map(|piece| piece.as_ref())
             .find(|piece| piece.piece_type == PieceType::King && piece.color == Color::White)
             .map(|piece| piece.position);
 
         let black_king = black_pieces
             .iter()
+            .filter_map(|piece| piece.as_ref())
             .find(|piece| piece.piece_type == PieceType::King && piece.color == Color::Black)
             .map(|piece| piece.position);
 
@@ -181,13 +204,17 @@ impl Position {
         mem::swap(&mut self.white_pieces, &mut self.black_pieces);
 
         for piece in self.black_pieces.iter_mut() {
-            piece.color = Color::Black;
-            piece.position = piece.position.invert();
+            if let Some(piece) = piece.as_mut() {
+                piece.color = Color::Black;
+                piece.position = piece.position.invert();
+            }
         }
 
         for piece in self.white_pieces.iter_mut() {
-            piece.color = Color::White;
-            piece.position = piece.position.invert();
+            if let Some(piece) = piece.as_mut() {
+                piece.color = Color::White;
+                piece.position = piece.position.invert();
+            }
         }
 
         self.true_active_color = self.true_active_color.invert();
@@ -215,14 +242,6 @@ impl Position {
         self.all_map = self.white_map | self.black_map;
 
         self.position_lookup = calc_position_lookup(&self.white_pieces, &self.black_pieces);
-
-        // let actual_white_king_position = self
-        //     .white_pieces
-        //     .iter()
-        //     .find(|piece| piece.piece_type == PieceType::King && piece.color == Color::White)
-        //     .map(|piece| piece.position);
-
-        // assert_eq!(self.white_king, actual_white_king_position);
     }
 
     /// Returns a new GamePosition with the colors and board flipped.
@@ -241,9 +260,17 @@ impl Position {
 
         if let Some(index) = self.position_lookup[position.0 as usize] {
             if index >= 16 {
-                return Some(&self.black_pieces[(index - 16) as usize]);
+                return Some(
+                    self.black_pieces[(index - 16) as usize]
+                        .as_ref()
+                        .expect("Black piece missing"),
+                );
             } else {
-                return Some(&self.white_pieces[index as usize]);
+                return Some(
+                    self.white_pieces[index as usize]
+                        .as_ref()
+                        .expect("White piece missing"),
+                );
             }
         } else {
             None
@@ -254,9 +281,17 @@ impl Position {
     pub fn get_piece_at_mut(&mut self, position: Pos) -> Option<&mut Piece> {
         if let Some(index) = self.position_lookup[position.0 as usize] {
             if index >= 16 {
-                return Some(&mut self.black_pieces[(index - 16) as usize]);
+                return Some(
+                    self.black_pieces[(index - 16) as usize]
+                        .as_mut()
+                        .expect("Black piece missing"),
+                );
             } else {
-                return Some(&mut self.white_pieces[index as usize]);
+                return Some(
+                    self.white_pieces[index as usize]
+                        .as_mut()
+                        .expect("White piece missing"),
+                );
             }
         } else {
             None
@@ -352,9 +387,13 @@ impl Position {
                 let is_black = piece_idx >= 16;
 
                 let piece = if is_black {
-                    &mut self.black_pieces[(piece_idx - 16) as usize]
+                    self.black_pieces[(piece_idx - 16) as usize]
+                        .as_mut()
+                        .expect("Black piece missing")
                 } else {
-                    &mut self.white_pieces[piece_idx as usize]
+                    self.white_pieces[piece_idx as usize]
+                        .as_mut()
+                        .expect("White piece missing")
                 };
 
                 piece.position = to;
@@ -393,12 +432,16 @@ impl Position {
     pub fn remove_piece_at(&mut self, position: Pos) -> Result<(), anyhow::Error> {
         if let Some(index) = self.position_lookup[position.0 as usize] {
             if index >= 16 {
-                self.black_pieces.remove((index - 16) as usize);
+                self.black_pieces[index as usize - 16] = None;
+                self.black_map.clear(position);
             } else {
-                self.white_pieces.remove(index as usize);
+                self.white_pieces[index as usize] = None;
+                self.white_map.clear(position);
             }
 
-            self.calc_changes();
+            self.all_map = self.white_map | self.black_map;
+            self.position_lookup[position.0 as usize] = None;
+
             Ok(())
         } else {
             Err(anyhow::anyhow!("No piece at position"))
@@ -412,12 +455,18 @@ impl Position {
         }
 
         if piece.color == Color::White {
-            self.white_pieces.push(piece);
+            let position = piece.position;
+            let idx = add_to_slot_map(&mut self.white_pieces, piece);
+            self.white_map.set(position);
+            self.position_lookup[position.0 as usize] = Some(idx);
         } else {
-            self.black_pieces.push(piece);
+            let position = piece.position;
+            let idx = add_to_slot_map(&mut self.black_pieces, piece);
+            self.black_map.set(position);
+            self.position_lookup[position.0 as usize] = Some(idx + 16);
         }
 
-        self.calc_changes();
+        self.all_map = self.white_map | self.black_map;
 
         Ok(())
     }
@@ -456,7 +505,9 @@ impl Position {
 
         let mut unimpeded_moves = Bitboard::new();
         for piece in self.black_pieces.iter() {
-            unimpeded_moves = unimpeded_moves | piece.get_attack_map();
+            if let Some(piece) = piece {
+                unimpeded_moves = unimpeded_moves | piece.get_attack_map();
+            }
         }
 
         for mv in possible_moves.into_iter() {
@@ -490,194 +541,203 @@ impl Position {
         let mut moves = Vec::with_capacity(self.white_pieces.len() * 8);
 
         for piece in self.white_pieces.iter() {
-            let legal_moves = piece.get_legal_moves(self);
+            if let Some(piece) = piece {
+                let legal_moves = piece.get_legal_moves(self);
 
-            // Don't move, must rescue or drop
-            if game_type == GameType::Rescue {
-                for dir in piece.position.get_cardinal_adjacent().into_iter() {
-                    if let Some(dir) = dir {
-                        match piece.holding {
-                            Some(holding) => {
-                                if let None = self.get_piece_at(dir) {
-                                    if dir.is_row(0) && holding == PieceType::Pawn {
-                                        // Drop pawn on promotion row
-                                        for promoted_to in [
-                                            PieceType::Queen,
-                                            PieceType::Rook,
-                                            PieceType::Bishop,
-                                            PieceType::Knight,
-                                        ] {
+                // Don't move, must rescue or drop
+                if game_type == GameType::Rescue {
+                    for dir in piece.position.get_cardinal_adjacent().into_iter() {
+                        if let Some(dir) = dir {
+                            match piece.holding {
+                                Some(holding) => {
+                                    if let None = self.get_piece_at(dir) {
+                                        if dir.is_row(0) && holding == PieceType::Pawn {
+                                            // Drop pawn on promotion row
+                                            for promoted_to in [
+                                                PieceType::Queen,
+                                                PieceType::Rook,
+                                                PieceType::Bishop,
+                                                PieceType::Knight,
+                                            ] {
+                                                moves.push(PieceMove {
+                                                    from: piece.position,
+                                                    to: piece.position,
+                                                    move_type: MoveType::NormalAndDrop {
+                                                        pos: dir,
+                                                        promoted_to: Some(promoted_to),
+                                                    },
+                                                    piece_type: piece.piece_type,
+                                                });
+                                            }
+                                        } else {
+                                            // Drop anything else anywhere
                                             moves.push(PieceMove {
                                                 from: piece.position,
                                                 to: piece.position,
                                                 move_type: MoveType::NormalAndDrop {
                                                     pos: dir,
-                                                    promoted_to: Some(promoted_to),
+                                                    promoted_to: None,
                                                 },
                                                 piece_type: piece.piece_type,
                                             });
                                         }
-                                    } else {
-                                        // Drop anything else anywhere
-                                        moves.push(PieceMove {
-                                            from: piece.position,
-                                            to: piece.position,
-                                            move_type: MoveType::NormalAndDrop {
-                                                pos: dir,
-                                                promoted_to: None,
-                                            },
-                                            piece_type: piece.piece_type,
-                                        });
                                     }
                                 }
-                            }
-                            None => {
-                                if let Some(piece_at_pos) = self.get_piece_at(dir) {
-                                    if piece_at_pos.color == Color::White
-                                        && piece.piece_type.can_hold(piece_at_pos.piece_type)
-                                        && piece_at_pos.holding.is_none()
-                                    {
-                                        moves.push(PieceMove {
-                                            from: piece.position,
-                                            to: piece.position,
-                                            move_type: MoveType::NormalAndRescue(dir),
-                                            piece_type: piece.piece_type,
-                                        });
+                                None => {
+                                    if let Some(piece_at_pos) = self.get_piece_at(dir) {
+                                        if piece_at_pos.color == Color::White
+                                            && piece.piece_type.can_hold(piece_at_pos.piece_type)
+                                            && piece_at_pos.holding.is_none()
+                                        {
+                                            moves.push(PieceMove {
+                                                from: piece.position,
+                                                to: piece.position,
+                                                move_type: MoveType::NormalAndRescue(dir),
+                                                piece_type: piece.piece_type,
+                                            });
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            // Move to a spot, maybe capture, maybe rescue, maybe drop
-            for to in legal_moves.into_iter() {
-                if self.white_map.get(to) {
-                    panic!("Illegal move");
-                }
+                // Move to a spot, maybe capture, maybe rescue, maybe drop
+                for to in legal_moves.into_iter() {
+                    if self.white_map.get(to) {
+                        panic!("Illegal move");
+                    }
 
-                if self.black_map.get(to) {
-                    if to.is_row(0) && piece.piece_type == PieceType::Pawn {
-                        // Capture and promote
-                        for promoted_to in [
-                            PieceType::Queen,
-                            PieceType::Rook,
-                            PieceType::Bishop,
-                            PieceType::Knight,
-                        ] {
+                    if self.black_map.get(to) {
+                        if to.is_row(0) && piece.piece_type == PieceType::Pawn {
+                            // Capture and promote
+                            for promoted_to in [
+                                PieceType::Queen,
+                                PieceType::Rook,
+                                PieceType::Bishop,
+                                PieceType::Knight,
+                            ] {
+                                moves.push(PieceMove {
+                                    from: piece.position,
+                                    to,
+                                    move_type: MoveType::CapturePromotion {
+                                        captured: self.get_piece_at(to).unwrap().piece_type,
+                                        promoted_to,
+                                        captured_holding: self.get_piece_at(to).unwrap().holding,
+                                    },
+                                    piece_type: piece.piece_type,
+                                });
+                            }
+                        } else {
                             moves.push(PieceMove {
                                 from: piece.position,
                                 to,
-                                move_type: MoveType::CapturePromotion {
+                                move_type: MoveType::Capture {
                                     captured: self.get_piece_at(to).unwrap().piece_type,
-                                    promoted_to,
                                     captured_holding: self.get_piece_at(to).unwrap().holding,
                                 },
                                 piece_type: piece.piece_type,
                             });
                         }
                     } else {
-                        moves.push(PieceMove {
-                            from: piece.position,
-                            to,
-                            move_type: MoveType::Capture {
-                                captured: self.get_piece_at(to).unwrap().piece_type,
-                                captured_holding: self.get_piece_at(to).unwrap().holding,
-                            },
-                            piece_type: piece.piece_type,
-                        });
-                    }
-                } else {
-                    if piece.piece_type == PieceType::King
-                        && piece.position == Pos::xy(4, 7)
-                        && to == Pos::xy(6, 7)
-                    {
-                        // White kingside castle
-                        moves.push(PieceMove {
-                            from: piece.position,
-                            to,
-                            move_type: MoveType::Castle {
-                                king: Pos::xy(4, 7),
-                                rook: Pos::xy(7, 7),
-                            },
-                            piece_type: piece.piece_type,
-                        });
-                    } else if piece.piece_type == PieceType::King
-                        && piece.position == Pos::xy(4, 7)
-                        && to == Pos::xy(2, 7)
-                    {
-                        // White queenside castle
-                        moves.push(PieceMove {
-                            from: piece.position,
-                            to,
-                            move_type: MoveType::Castle {
-                                king: Pos::xy(4, 7),
-                                rook: Pos::xy(0, 7),
-                            },
-                            piece_type: piece.piece_type,
-                        });
-                    } else if piece.piece_type == PieceType::King
-                        && piece.position == Pos::xy(3, 7)
-                        && to == Pos::xy(1, 7)
-                    {
-                        // Black queenside castle
-                        moves.push(PieceMove {
-                            from: piece.position,
-                            to,
-                            move_type: MoveType::Castle {
-                                king: Pos::xy(3, 7),
-                                rook: Pos::xy(0, 7),
-                            },
-                            piece_type: piece.piece_type,
-                        });
-                    } else if piece.piece_type == PieceType::King
-                        && piece.position == Pos::xy(3, 7)
-                        && to == Pos::xy(5, 7)
-                    {
-                        // Black kingside castle
-                        moves.push(PieceMove {
-                            from: piece.position,
-                            to,
-                            move_type: MoveType::Castle {
-                                king: Pos::xy(3, 7),
-                                rook: Pos::xy(7, 7),
-                            },
-                            piece_type: piece.piece_type,
-                        });
-                    } else if piece.piece_type == PieceType::Pawn && to.is_row(0) {
-                        for promoted_to in [
-                            PieceType::Queen,
-                            PieceType::Rook,
-                            PieceType::Bishop,
-                            PieceType::Knight,
-                        ]
-                        .iter()
+                        if piece.piece_type == PieceType::King
+                            && piece.position == Pos::xy(4, 7)
+                            && to == Pos::xy(6, 7)
                         {
+                            // White kingside castle
                             moves.push(PieceMove {
                                 from: piece.position,
                                 to,
-                                move_type: MoveType::Promotion(*promoted_to),
+                                move_type: MoveType::Castle {
+                                    king: Pos::xy(4, 7),
+                                    rook: Pos::xy(7, 7),
+                                },
                                 piece_type: piece.piece_type,
                             });
-                        }
-                    } else {
-                        if piece.piece_type == PieceType::Pawn {
-                            if let Some(en_passant) = self.en_passant {
-                                if to == en_passant {
-                                    moves.push(PieceMove {
-                                        from: piece.position,
-                                        to,
-                                        move_type: MoveType::EnPassant {
-                                            captured: PieceType::Pawn,
-                                            captured_pos: Pos::xy(en_passant.get_col(), 3),
-                                            captured_holding: self
-                                                .get_piece_at(Pos::xy(en_passant.get_col(), 3))
-                                                .unwrap()
-                                                .holding,
-                                        },
-                                        piece_type: piece.piece_type,
-                                    });
+                        } else if piece.piece_type == PieceType::King
+                            && piece.position == Pos::xy(4, 7)
+                            && to == Pos::xy(2, 7)
+                        {
+                            // White queenside castle
+                            moves.push(PieceMove {
+                                from: piece.position,
+                                to,
+                                move_type: MoveType::Castle {
+                                    king: Pos::xy(4, 7),
+                                    rook: Pos::xy(0, 7),
+                                },
+                                piece_type: piece.piece_type,
+                            });
+                        } else if piece.piece_type == PieceType::King
+                            && piece.position == Pos::xy(3, 7)
+                            && to == Pos::xy(1, 7)
+                        {
+                            // Black queenside castle
+                            moves.push(PieceMove {
+                                from: piece.position,
+                                to,
+                                move_type: MoveType::Castle {
+                                    king: Pos::xy(3, 7),
+                                    rook: Pos::xy(0, 7),
+                                },
+                                piece_type: piece.piece_type,
+                            });
+                        } else if piece.piece_type == PieceType::King
+                            && piece.position == Pos::xy(3, 7)
+                            && to == Pos::xy(5, 7)
+                        {
+                            // Black kingside castle
+                            moves.push(PieceMove {
+                                from: piece.position,
+                                to,
+                                move_type: MoveType::Castle {
+                                    king: Pos::xy(3, 7),
+                                    rook: Pos::xy(7, 7),
+                                },
+                                piece_type: piece.piece_type,
+                            });
+                        } else if piece.piece_type == PieceType::Pawn && to.is_row(0) {
+                            for promoted_to in [
+                                PieceType::Queen,
+                                PieceType::Rook,
+                                PieceType::Bishop,
+                                PieceType::Knight,
+                            ]
+                            .iter()
+                            {
+                                moves.push(PieceMove {
+                                    from: piece.position,
+                                    to,
+                                    move_type: MoveType::Promotion(*promoted_to),
+                                    piece_type: piece.piece_type,
+                                });
+                            }
+                        } else {
+                            if piece.piece_type == PieceType::Pawn {
+                                if let Some(en_passant) = self.en_passant {
+                                    if to == en_passant {
+                                        moves.push(PieceMove {
+                                            from: piece.position,
+                                            to,
+                                            move_type: MoveType::EnPassant {
+                                                captured: PieceType::Pawn,
+                                                captured_pos: Pos::xy(en_passant.get_col(), 3),
+                                                captured_holding: self
+                                                    .get_piece_at(Pos::xy(en_passant.get_col(), 3))
+                                                    .unwrap()
+                                                    .holding,
+                                            },
+                                            piece_type: piece.piece_type,
+                                        });
+                                    } else {
+                                        moves.push(PieceMove {
+                                            from: piece.position,
+                                            to,
+                                            move_type: MoveType::Normal,
+                                            piece_type: piece.piece_type,
+                                        });
+                                    }
                                 } else {
                                     moves.push(PieceMove {
                                         from: piece.position,
@@ -694,33 +754,44 @@ impl Position {
                                     piece_type: piece.piece_type,
                                 });
                             }
-                        } else {
-                            moves.push(PieceMove {
-                                from: piece.position,
-                                to,
-                                move_type: MoveType::Normal,
-                                piece_type: piece.piece_type,
-                            });
                         }
                     }
-                }
 
-                if game_type == GameType::Rescue {
-                    match piece.holding {
-                        // Drop a rescued piece at an adjacent position
-                        Some(holding) => {
-                            for dir in to.get_cardinal_adjacent().into_iter() {
-                                if let Some(dir) = dir {
-                                    if let None = self.get_piece_at(dir) {
-                                        if self.black_map.get(to) {
-                                            if holding == PieceType::Pawn && dir.is_row(0) {
-                                                // Capture and drop pawn on promotion row
-                                                for promoted_to in [
-                                                    PieceType::Queen,
-                                                    PieceType::Rook,
-                                                    PieceType::Bishop,
-                                                    PieceType::Knight,
-                                                ] {
+                    if game_type == GameType::Rescue {
+                        match piece.holding {
+                            // Drop a rescued piece at an adjacent position
+                            Some(holding) => {
+                                for dir in to.get_cardinal_adjacent().into_iter() {
+                                    if let Some(dir) = dir {
+                                        if let None = self.get_piece_at(dir) {
+                                            if self.black_map.get(to) {
+                                                if holding == PieceType::Pawn && dir.is_row(0) {
+                                                    // Capture and drop pawn on promotion row
+                                                    for promoted_to in [
+                                                        PieceType::Queen,
+                                                        PieceType::Rook,
+                                                        PieceType::Bishop,
+                                                        PieceType::Knight,
+                                                    ] {
+                                                        moves.push(PieceMove {
+                                                            from: piece.position,
+                                                            to,
+                                                            move_type: MoveType::CaptureAndDrop {
+                                                                captured_type: self
+                                                                    .get_piece_at(to)
+                                                                    .unwrap()
+                                                                    .piece_type,
+                                                                drop_pos: dir,
+                                                                promoted_to: Some(promoted_to),
+                                                                captured_holding: self
+                                                                    .get_piece_at(to)
+                                                                    .unwrap()
+                                                                    .holding,
+                                                            },
+                                                            piece_type: piece.piece_type,
+                                                        });
+                                                    }
+                                                } else {
                                                     moves.push(PieceMove {
                                                         from: piece.position,
                                                         to,
@@ -730,7 +801,7 @@ impl Position {
                                                                 .unwrap()
                                                                 .piece_type,
                                                             drop_pos: dir,
-                                                            promoted_to: Some(promoted_to),
+                                                            promoted_to: None,
                                                             captured_holding: self
                                                                 .get_piece_at(to)
                                                                 .unwrap()
@@ -740,95 +811,81 @@ impl Position {
                                                     });
                                                 }
                                             } else {
-                                                moves.push(PieceMove {
-                                                    from: piece.position,
-                                                    to,
-                                                    move_type: MoveType::CaptureAndDrop {
-                                                        captured_type: self
-                                                            .get_piece_at(to)
-                                                            .unwrap()
-                                                            .piece_type,
-                                                        drop_pos: dir,
-                                                        promoted_to: None,
-                                                        captured_holding: self
-                                                            .get_piece_at(to)
-                                                            .unwrap()
-                                                            .holding,
-                                                    },
-                                                    piece_type: piece.piece_type,
-                                                });
-                                            }
-                                        } else {
-                                            if holding == PieceType::Pawn && dir.is_row(0) {
-                                                // Drop pawn on promotion row
-                                                for promoted_to in [
-                                                    PieceType::Queen,
-                                                    PieceType::Rook,
-                                                    PieceType::Bishop,
-                                                    PieceType::Knight,
-                                                ] {
+                                                if holding == PieceType::Pawn && dir.is_row(0) {
+                                                    // Drop pawn on promotion row
+                                                    for promoted_to in [
+                                                        PieceType::Queen,
+                                                        PieceType::Rook,
+                                                        PieceType::Bishop,
+                                                        PieceType::Knight,
+                                                    ] {
+                                                        moves.push(PieceMove {
+                                                            from: piece.position,
+                                                            to,
+                                                            move_type: MoveType::NormalAndDrop {
+                                                                promoted_to: Some(promoted_to),
+                                                                pos: dir,
+                                                            },
+                                                            piece_type: piece.piece_type,
+                                                        });
+                                                    }
+                                                } else {
                                                     moves.push(PieceMove {
                                                         from: piece.position,
                                                         to,
                                                         move_type: MoveType::NormalAndDrop {
-                                                            promoted_to: Some(promoted_to),
                                                             pos: dir,
+                                                            promoted_to: None,
                                                         },
                                                         piece_type: piece.piece_type,
                                                     });
                                                 }
-                                            } else {
-                                                moves.push(PieceMove {
-                                                    from: piece.position,
-                                                    to,
-                                                    move_type: MoveType::NormalAndDrop {
-                                                        pos: dir,
-                                                        promoted_to: None,
-                                                    },
-                                                    piece_type: piece.piece_type,
-                                                });
                                             }
                                         }
                                     }
                                 }
                             }
-                        }
-                        // Rescue adjacent pieces of the same color
-                        None => {
-                            for dir in to.get_cardinal_adjacent().into_iter() {
-                                if let Some(dir) = dir {
-                                    if let Some(piece_at_pos) = self.get_piece_at(dir) {
-                                        if piece_at_pos == piece || piece_at_pos.holding.is_some() {
-                                            continue;
-                                        }
+                            // Rescue adjacent pieces of the same color
+                            None => {
+                                for dir in to.get_cardinal_adjacent().into_iter() {
+                                    if let Some(dir) = dir {
+                                        if let Some(piece_at_pos) = self.get_piece_at(dir) {
+                                            if piece_at_pos == piece
+                                                || piece_at_pos.holding.is_some()
+                                            {
+                                                continue;
+                                            }
 
-                                        if piece_at_pos.color == Color::White
-                                            && piece.piece_type.can_hold(piece_at_pos.piece_type)
-                                        {
-                                            if self.black_map.get(to) {
-                                                moves.push(PieceMove {
-                                                    from: piece.position,
-                                                    to,
-                                                    move_type: MoveType::CaptureAndRescue {
-                                                        captured_type: self
-                                                            .get_piece_at(to)
-                                                            .unwrap()
-                                                            .piece_type,
-                                                        rescued_pos: dir,
-                                                        captured_holding: self
-                                                            .get_piece_at(to)
-                                                            .unwrap()
-                                                            .holding,
-                                                    },
-                                                    piece_type: piece.piece_type,
-                                                });
-                                            } else {
-                                                moves.push(PieceMove {
-                                                    from: piece.position,
-                                                    to,
-                                                    move_type: MoveType::NormalAndRescue(dir),
-                                                    piece_type: piece.piece_type,
-                                                });
+                                            if piece_at_pos.color == Color::White
+                                                && piece
+                                                    .piece_type
+                                                    .can_hold(piece_at_pos.piece_type)
+                                            {
+                                                if self.black_map.get(to) {
+                                                    moves.push(PieceMove {
+                                                        from: piece.position,
+                                                        to,
+                                                        move_type: MoveType::CaptureAndRescue {
+                                                            captured_type: self
+                                                                .get_piece_at(to)
+                                                                .unwrap()
+                                                                .piece_type,
+                                                            rescued_pos: dir,
+                                                            captured_holding: self
+                                                                .get_piece_at(to)
+                                                                .unwrap()
+                                                                .holding,
+                                                        },
+                                                        piece_type: piece.piece_type,
+                                                    });
+                                                } else {
+                                                    moves.push(PieceMove {
+                                                        from: piece.position,
+                                                        to,
+                                                        move_type: MoveType::NormalAndRescue(dir),
+                                                        piece_type: piece.piece_type,
+                                                    });
+                                                }
                                             }
                                         }
                                     }
@@ -848,8 +905,10 @@ impl Position {
         let mut board = [[None; 8]; 8];
 
         for piece in self.white_pieces.iter().chain(self.black_pieces.iter()) {
-            let (x, y) = piece.position.as_tuple();
-            board[y as usize][x as usize] = Some(piece);
+            if let Some(piece) = piece {
+                let (x, y) = piece.position.as_tuple();
+                board[y as usize][x as usize] = Some(piece);
+            }
         }
 
         let mut board_string = String::new();
@@ -876,8 +935,10 @@ impl Position {
         let mut board = [[None; 8]; 8];
 
         for piece in self.white_pieces.iter().chain(self.black_pieces.iter()) {
-            let (x, y) = piece.position.as_tuple();
-            board[y as usize][x as usize] = Some(piece);
+            if let Some(piece) = piece {
+                let (x, y) = piece.position.as_tuple();
+                board[y as usize][x as usize] = Some(piece);
+            }
         }
 
         let mut board_string = String::new();
@@ -915,8 +976,10 @@ impl Position {
         let mut board = [[None; 8]; 8];
 
         for piece in self.white_pieces.iter().chain(self.black_pieces.iter()) {
-            let (x, y) = piece.position.as_tuple();
-            board[y as usize][x as usize] = Some(piece);
+            if let Some(piece) = piece {
+                let (x, y) = piece.position.as_tuple();
+                board[y as usize][x as usize] = Some(piece);
+            }
         }
 
         let mut board_string = String::new();
@@ -1396,11 +1459,15 @@ impl std::hash::Hash for Position {
         let mut board = [None; 64];
 
         for piece in self.white_pieces.iter() {
-            board[piece.position.0 as usize] = Some((piece.piece_type, piece.color));
+            if let Some(piece) = piece {
+                board[piece.position.0 as usize] = Some((piece.piece_type, piece.color));
+            }
         }
 
         for piece in self.black_pieces.iter() {
-            board[piece.position.0 as usize] = Some((piece.piece_type, piece.color));
+            if let Some(piece) = piece {
+                board[piece.position.0 as usize] = Some((piece.piece_type, piece.color));
+            }
         }
 
         board.hash(state);

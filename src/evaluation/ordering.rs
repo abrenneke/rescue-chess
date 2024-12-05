@@ -163,30 +163,34 @@ fn score_undermining(position: &Position, mv: &PieceMove) -> i32 {
         if target.piece_type == PieceType::Pawn && target.color == Color::Black {
             // Look for pieces this pawn is defending
             for piece in position.black_pieces.iter() {
-                if piece.piece_type == PieceType::Pawn {
-                    continue;
-                }
-
-                // Check if target pawn is defending this piece
-                let defending_distance =
-                    (target.position.get_col() as i32 - piece.position.get_col() as i32).abs();
-                if defending_distance <= 1 {
-                    // Check if piece has other defenders
-                    let mut other_defenders = 0;
-                    for defender in position.black_pieces.iter() {
-                        if defender != target {
-                            // Don't count the targeted pawn
-                            let moves = defender.get_legal_moves(position);
-                            if moves.into_iter().any(|m| m == piece.position) {
-                                other_defenders += 1;
-                            }
-                        }
+                if let Some(piece) = piece {
+                    if piece.piece_type == PieceType::Pawn {
+                        continue;
                     }
 
-                    if other_defenders == 0 {
-                        // Big bonus! This move would force the pawn to move/capture
-                        // and leave a piece undefended
-                        score += 8000 + piece_value(piece.piece_type) / 2;
+                    // Check if target pawn is defending this piece
+                    let defending_distance =
+                        (target.position.get_col() as i32 - piece.position.get_col() as i32).abs();
+                    if defending_distance <= 1 {
+                        // Check if piece has other defenders
+                        let mut other_defenders = 0;
+                        for defender in position.black_pieces.iter() {
+                            if let Some(defender) = defender {
+                                if defender != target {
+                                    // Don't count the targeted pawn
+                                    let moves = defender.get_legal_moves(position);
+                                    if moves.into_iter().any(|m| m == piece.position) {
+                                        other_defenders += 1;
+                                    }
+                                }
+                            }
+                        }
+
+                        if other_defenders == 0 {
+                            // Big bonus! This move would force the pawn to move/capture
+                            // and leave a piece undefended
+                            score += 8000 + piece_value(piece.piece_type) / 2;
+                        }
                     }
                 }
             }

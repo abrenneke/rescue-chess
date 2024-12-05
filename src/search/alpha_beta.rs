@@ -754,10 +754,12 @@ fn should_try_null_move(position: &Position, depth: u32, beta: i32) -> bool {
     let white_has_major_pieces = position
         .white_pieces
         .iter()
+        .filter_map(|p| p.as_ref())
         .any(|p| p.piece_type == PieceType::Queen || p.piece_type == PieceType::Rook);
     let black_has_major_pieces = position
         .black_pieces
         .iter()
+        .filter_map(|p| p.as_ref())
         .any(|p| p.piece_type == PieceType::Queen || p.piece_type == PieceType::Rook);
 
     if !white_has_major_pieces || !black_has_major_pieces {
@@ -777,7 +779,9 @@ fn get_material_count(position: &Position, color: Color) -> i32 {
     };
 
     for piece in pieces.iter() {
-        material += piece_value(piece.piece_type);
+        if let Some(piece) = piece {
+            material += piece_value(piece.piece_type);
+        }
     }
 
     material
