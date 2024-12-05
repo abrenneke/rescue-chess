@@ -179,277 +179,45 @@ impl King {
                     }
                 }
 
-                // Ranks and files
-                let mut pos = king;
+                // Use magic bitboards to get sliding piece attacks
+                let blockers = position.all_map;
 
-                // Up
-                while pos.can_move_up() {
-                    pos = pos.moved_unchecked(0, -1);
+                // Get all possible rook attacks from king's position
+                let rook_attacks = super::rook::magic::get_rook_moves_magic(king, blockers);
+                let rook_attackers = rook_attacks & position.black_map;
 
-                    if position.white_map.get(pos) {
-                        break;
-                    }
-
-                    if position.is_piece_at(pos, &[PieceType::Rook, PieceType::Queen], Color::Black)
-                    {
-                        return true;
-                    }
-
-                    if position.black_map.get(pos) {
-                        break;
-                    }
+                // Check if any of those squares have a rook or queen
+                if rook_attackers.into_iter().any(|pos| {
+                    position.is_piece_at(pos, &[PieceType::Rook, PieceType::Queen], Color::Black)
+                }) {
+                    return true;
                 }
 
-                pos = king;
+                // Get all possible bishop attacks from king's position
+                let bishop_attacks = super::bishop::magic::get_bishop_moves_magic(king, blockers);
+                let bishop_attackers = bishop_attacks & position.black_map;
 
-                // Down
-                while pos.can_move_down() {
-                    pos = pos.moved_unchecked(0, 1);
-
-                    if position.white_map.get(pos) {
-                        break;
-                    }
-
-                    if position.is_piece_at(pos, &[PieceType::Rook, PieceType::Queen], Color::Black)
-                    {
-                        return true;
-                    }
-
-                    if position.black_map.get(pos) {
-                        break;
-                    }
+                // Check if any of those squares have a bishop or queen
+                if bishop_attackers.into_iter().any(|pos| {
+                    position.is_piece_at(pos, &[PieceType::Bishop, PieceType::Queen], Color::Black)
+                }) {
+                    return true;
                 }
 
-                pos = king;
-
-                // Left
-                while pos.can_move_left() {
-                    pos = pos.moved_unchecked(-1, 0);
-
-                    if position.white_map.get(pos) {
-                        break;
-                    }
-
-                    if position.is_piece_at(pos, &[PieceType::Rook, PieceType::Queen], Color::Black)
-                    {
-                        return true;
-                    }
-
-                    if position.black_map.get(pos) {
-                        break;
-                    }
+                let knight_attackers = *super::knight::attack_map(king) & position.black_map;
+                if knight_attackers
+                    .into_iter()
+                    .any(|pos| position.is_piece_at(pos, &[PieceType::Knight], Color::Black))
+                {
+                    return true;
                 }
 
-                pos = king;
-
-                // Right
-                while pos.can_move_right() {
-                    pos = pos.moved_unchecked(1, 0);
-
-                    if position.white_map.get(pos) {
-                        break;
-                    }
-
-                    if position.is_piece_at(pos, &[PieceType::Rook, PieceType::Queen], Color::Black)
-                    {
-                        return true;
-                    }
-
-                    if position.black_map.get(pos) {
-                        break;
-                    }
-                }
-
-                // Diagonals
-
-                pos = king;
-
-                // Up left
-                while pos.can_move_up() && pos.can_move_left() {
-                    pos = pos.moved_unchecked(-1, -1);
-
-                    if position.white_map.get(pos) {
-                        break;
-                    }
-
-                    if position.is_piece_at(
-                        pos,
-                        &[PieceType::Bishop, PieceType::Queen],
-                        Color::Black,
-                    ) {
-                        return true;
-                    }
-
-                    if position.black_map.get(pos) {
-                        break;
-                    }
-                }
-
-                pos = king;
-
-                // Up right
-                while pos.can_move_up() && pos.can_move_right() {
-                    pos = pos.moved_unchecked(1, -1);
-
-                    if position.white_map.get(pos) {
-                        break;
-                    }
-
-                    if position.is_piece_at(
-                        pos,
-                        &[PieceType::Bishop, PieceType::Queen],
-                        Color::Black,
-                    ) {
-                        return true;
-                    }
-
-                    if position.black_map.get(pos) {
-                        break;
-                    }
-                }
-
-                pos = king;
-
-                // Down right
-                while pos.can_move_down() && pos.can_move_right() {
-                    pos = pos.moved_unchecked(1, 1);
-
-                    if position.white_map.get(pos) {
-                        break;
-                    }
-
-                    if position.is_piece_at(
-                        pos,
-                        &[PieceType::Bishop, PieceType::Queen],
-                        Color::Black,
-                    ) {
-                        return true;
-                    }
-
-                    if position.black_map.get(pos) {
-                        break;
-                    }
-                }
-
-                pos = king;
-
-                // Down left
-                while pos.can_move_down() && pos.can_move_left() {
-                    pos = pos.moved_unchecked(-1, 1);
-
-                    if position.white_map.get(pos) {
-                        break;
-                    }
-
-                    if position.is_piece_at(
-                        pos,
-                        &[PieceType::Bishop, PieceType::Queen],
-                        Color::Black,
-                    ) {
-                        return true;
-                    }
-
-                    if position.black_map.get(pos) {
-                        break;
-                    }
-                }
-
-                // Knights
-                if let Some(pos) = king.moved(-1, -2) {
-                    if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
-                        return true;
-                    }
-                }
-
-                if let Some(pos) = king.moved(1, -2) {
-                    if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
-                        return true;
-                    }
-                }
-
-                if let Some(pos) = king.moved(2, -1) {
-                    if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
-                        return true;
-                    }
-                }
-
-                if let Some(pos) = king.moved(2, 1) {
-                    if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
-                        return true;
-                    }
-                }
-
-                if let Some(pos) = king.moved(1, 2) {
-                    if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
-                        return true;
-                    }
-                }
-
-                if let Some(pos) = king.moved(-1, 2) {
-                    if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
-                        return true;
-                    }
-                }
-
-                if let Some(pos) = king.moved(-2, 1) {
-                    if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
-                        return true;
-                    }
-                }
-
-                if let Some(pos) = king.moved(-2, -1) {
-                    if position.is_piece_at(pos, &[PieceType::Knight], Color::Black) {
-                        return true;
-                    }
-                }
-
-                // Kings
-                if let Some(pos) = king.moved(-1, -1) {
-                    if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
-                        return true;
-                    }
-                }
-
-                if let Some(pos) = king.moved(0, -1) {
-                    if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
-                        return true;
-                    }
-                }
-
-                if let Some(pos) = king.moved(1, -1) {
-                    if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
-                        return true;
-                    }
-                }
-
-                if let Some(pos) = king.moved(1, 0) {
-                    if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
-                        return true;
-                    }
-                }
-
-                if let Some(pos) = king.moved(1, 1) {
-                    if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
-                        return true;
-                    }
-                }
-
-                if let Some(pos) = king.moved(0, 1) {
-                    if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
-                        return true;
-                    }
-                }
-
-                if let Some(pos) = king.moved(-1, 1) {
-                    if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
-                        return true;
-                    }
-                }
-
-                if let Some(pos) = king.moved(-1, 0) {
-                    if position.is_piece_at(pos, &[PieceType::King], Color::Black) {
-                        return true;
-                    }
+                let king_attackers = *attack_map(king) & position.black_map;
+                if king_attackers
+                    .into_iter()
+                    .any(|pos| position.is_piece_at(pos, &[PieceType::King], Color::Black))
+                {
+                    return true;
                 }
 
                 false
