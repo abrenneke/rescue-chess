@@ -1,7 +1,6 @@
 use clap::Parser;
 use crossbeam::channel;
 use num_cpus;
-use rayon::{self, prelude::*};
 use rescue_chess::{
     piece_move::GameType,
     position::extended_fen::{EpdOperand, ExtendedPosition},
@@ -211,12 +210,7 @@ fn main() -> Result<(), anyhow::Error> {
 
             last_completed = completed;
 
-            println!(
-                "Progress: {}/{} ({:.1}%)",
-                completed,
-                total_positions,
-                (completed as f64 / total_positions as f64) * 100.0
-            );
+            println!("Progress: {}/{}", completed, total_positions,);
         }
     });
 

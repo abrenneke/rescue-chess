@@ -388,7 +388,7 @@ impl Position {
 
     /// Moves a piece from one position to another.
     pub fn move_piece(&mut self, from: Pos, to: Pos) -> Result<(), anyhow::Error> {
-        if self.white_map.get(to) || self.black_map.get(to) {
+        if self.all_map.get(to) {
             return Err(anyhow::anyhow!(
                 "Position occupied {}, board state:\n{}",
                 to.to_algebraic(),

@@ -292,7 +292,7 @@ mod tests {
     #[test]
     fn test_has_bishop_pair_one_bishop() {
         // Create a position with only one bishop for each color
-        let mut position = Position::new(
+        let position = Position::new(
             vec![
                 // White pieces
                 Piece::new(
@@ -321,7 +321,7 @@ mod tests {
     #[test]
     fn test_has_bishop_pair_different_colored_squares() {
         // Create a position with bishops on different colored squares
-        let mut position = Position::new(
+        let position = Position::new(
             vec![
                 // White bishops on light and dark squares
                 Piece::new(
@@ -350,7 +350,7 @@ mod tests {
     #[test]
     fn test_has_bishop_pair_same_colored_squares() {
         // Create a position with bishops on same colored squares
-        let mut position = Position::new(
+        let position = Position::new(
             vec![
                 // White bishops both on light squares
                 Piece::new(
@@ -379,7 +379,7 @@ mod tests {
     #[test]
     fn test_has_bishop_pair_mixed_pieces() {
         // Create a position with other pieces to ensure we only count bishops
-        let mut position = Position::new(
+        let position = Position::new(
             vec![
                 // White pieces
                 Piece::new(
@@ -510,7 +510,7 @@ mod tests {
     #[test]
     fn test_evaluate_king_safety_exposed_king() {
         // Position with exposed white king (no pawn shield)
-        let mut position = Position::new(
+        let position = Position::new(
             vec![
                 Piece::new(
                     PieceType::King,
@@ -543,7 +543,7 @@ mod tests {
     #[test]
     fn test_evaluate_king_safety_partial_shield() {
         // Position with partial pawn shield (2 pawns)
-        let mut position = Position::new(
+        let position = Position::new(
             vec![
                 Piece::new(
                     PieceType::King,
@@ -575,7 +575,7 @@ mod tests {
     #[test]
     fn test_evaluate_king_safety_full_shield() {
         // Position with full pawn shield (3 pawns)
-        let mut position = Position::new(
+        let position = Position::new(
             vec![
                 Piece::new(
                     PieceType::King,
@@ -612,7 +612,7 @@ mod tests {
     #[test]
     fn test_evaluate_king_safety_edge_case() {
         // Test king safety evaluation when king is on the edge of the board
-        let mut position = Position::new(
+        let position = Position::new(
             vec![
                 Piece::new(
                     PieceType::King,
@@ -644,7 +644,7 @@ mod tests {
     #[test]
     fn test_evaluate_king_safety_no_king() {
         // Test position with no white king (edge case)
-        let mut position = Position::new(
+        let position = Position::new(
             vec![
                 Piece::new(
                     PieceType::Queen,
@@ -684,7 +684,7 @@ mod tests {
     #[test]
     fn test_evaluate_mobility_single_knight() {
         // Position with single knight in center with maximum mobility
-        let mut position = Position::new(
+        let position = Position::new(
             vec![Piece::new(
                 PieceType::Knight,
                 Color::White,
@@ -704,7 +704,7 @@ mod tests {
     #[test]
     fn test_evaluate_mobility_single_bishop() {
         // Position with single bishop in center
-        let mut position = Position::new(
+        let position = Position::new(
             vec![Piece::new(
                 PieceType::Bishop,
                 Color::White,
@@ -724,7 +724,7 @@ mod tests {
     #[test]
     fn test_evaluate_mobility_single_rook() {
         // Position with single rook in center
-        let mut position = Position::new(
+        let position = Position::new(
             vec![Piece::new(
                 PieceType::Rook,
                 Color::White,
@@ -744,7 +744,7 @@ mod tests {
     #[test]
     fn test_evaluate_mobility_single_queen() {
         // Position with single queen in center
-        let mut position = Position::new(
+        let position = Position::new(
             vec![Piece::new(
                 PieceType::Queen,
                 Color::White,
@@ -774,7 +774,7 @@ mod tests {
     #[test]
     fn test_evaluate_mobility_mixed_pieces() {
         // Position with multiple pieces in open positions
-        let mut position = Position::new(
+        let position = Position::new(
             vec![
                 // Central knight and bishop
                 Piece::new(
@@ -804,7 +804,7 @@ mod tests {
     #[test]
     fn test_evaluate_mobility_king_pawns() {
         // Test that kings and pawns don't contribute to mobility score
-        let mut position = Position::new(
+        let position = Position::new(
             vec![
                 Piece::new(
                     PieceType::King,

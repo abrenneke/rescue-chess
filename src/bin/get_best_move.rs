@@ -113,6 +113,7 @@ fn main() {
                 );
                 println!("Pruned: {}", state.data.pruned);
                 println!("Score: {}", result.score);
+                println!("Principal variation: {:?}", result.principal_variation);
             }
         }
         Err(e) => {
