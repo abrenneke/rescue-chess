@@ -51,6 +51,11 @@ impl Default for CastlingRights {
 pub struct RestorePosition {
     pub en_passant: Option<Pos>,
     pub castling_rights: CastlingRights,
+
+    pub piece_maps: Option<PieceMaps>,
+    pub attack_map: Option<SumBitboards>,
+    pub pseudolegal_moves: Option<ArrayVec<(PieceType, u8), 16>>,
+    pub all_legal_moves: Option<Vec<PieceMove>>,
 }
 
 /// A game position in chess. Contains all state to represent a single position
@@ -93,10 +98,9 @@ pub struct Position {
     pub piece_maps: RefCell<Option<PieceMaps>>,
     pub attack_map: RefCell<Option<SumBitboards>>,
     pub pseudolegal_moves: RefCell<Option<ArrayVec<(PieceType, u8), 16>>>,
+    pub all_legal_moves: RefCell<Option<Vec<PieceMove>>>,
 
     pub true_active_color: Color,
-
-    pub all_legal_moves: RefCell<Option<Vec<PieceMove>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -835,60 +839,48 @@ impl Position {
                                 },
                             });
                         }
-                    } else if piece_type == PieceType::King
-                        && from == Pos::xy(4, 7)
-                        && to == Pos::xy(6, 7)
-                    {
+                    } else if piece_type == PieceType::King && from == pos::E1 && to == pos::G1 {
                         // White kingside castle
                         moves.push(PieceMove {
                             from,
                             to,
                             piece_type,
                             move_type: MoveType::Castle {
-                                king: Pos::xy(4, 7),
-                                rook: Pos::xy(7, 7),
+                                king: pos::E1,
+                                rook: pos::H1,
                             },
                         });
-                    } else if piece_type == PieceType::King
-                        && from == Pos::xy(4, 7)
-                        && to == Pos::xy(2, 7)
-                    {
+                    } else if piece_type == PieceType::King && from == pos::E1 && to == pos::B1 {
                         // White queenside castle
                         moves.push(PieceMove {
                             from,
                             to,
                             piece_type,
                             move_type: MoveType::Castle {
-                                king: Pos::xy(4, 7),
-                                rook: Pos::xy(0, 7),
+                                king: pos::E1,
+                                rook: pos::A1,
                             },
                         });
-                    } else if piece_type == PieceType::King
-                        && from == Pos::xy(3, 7)
-                        && to == Pos::xy(1, 7)
-                    {
+                    } else if piece_type == PieceType::King && from == pos::D1 && to == pos::F1 {
                         // Black queenside castle
                         moves.push(PieceMove {
                             from,
                             to,
                             piece_type,
                             move_type: MoveType::Castle {
-                                king: Pos::xy(3, 7),
-                                rook: Pos::xy(0, 7),
+                                king: pos::D1,
+                                rook: pos::H1,
                             },
                         });
-                    } else if piece_type == PieceType::King
-                        && from == Pos::xy(3, 7)
-                        && to == Pos::xy(5, 7)
-                    {
+                    } else if piece_type == PieceType::King && from == pos::D1 && to == pos::B1 {
                         // Black kingside castle
                         moves.push(PieceMove {
                             from,
                             to,
                             piece_type,
                             move_type: MoveType::Castle {
-                                king: Pos::xy(3, 7),
-                                rook: Pos::xy(7, 7),
+                                king: pos::D1,
+                                rook: pos::A1,
                             },
                         });
                     } else if piece_type == PieceType::Pawn {
@@ -1153,10 +1145,22 @@ impl Position {
 
         self.try_remove_castling_rights(mv);
 
-        Ok(RestorePosition {
+        let restore = RestorePosition {
             en_passant,
             castling_rights,
-        })
+
+            all_legal_moves: self.all_legal_moves.borrow().as_ref().map(|m| m.clone()),
+            piece_maps: self.piece_maps.borrow().as_ref().map(|m| m.clone()),
+            attack_map: self.attack_map.borrow().as_ref().map(|m| m.clone()),
+            pseudolegal_moves: self.pseudolegal_moves.borrow().as_ref().map(|m| m.clone()),
+        };
+
+        *self.all_legal_moves.borrow_mut() = None;
+        *self.attack_map.borrow_mut() = None;
+        *self.pseudolegal_moves.borrow_mut() = None;
+        *self.piece_maps.borrow_mut() = None;
+
+        Ok(restore)
     }
 
     fn try_remove_castling_rights(&mut self, mv: PieceMove) {
@@ -1277,6 +1281,11 @@ impl Position {
 
         self.en_passant = restore_position.en_passant;
         self.castling_rights = restore_position.castling_rights;
+
+        *self.piece_maps.borrow_mut() = restore_position.piece_maps;
+        *self.attack_map.borrow_mut() = restore_position.attack_map;
+        *self.pseudolegal_moves.borrow_mut() = restore_position.pseudolegal_moves;
+        *self.all_legal_moves.borrow_mut() = restore_position.all_legal_moves;
 
         Ok(())
     }
@@ -1936,7 +1945,11 @@ mod tests {
                     mv.clone(),
                     RestorePosition {
                         en_passant: None,
-                        castling_rights: Default::default()
+                        castling_rights: Default::default(),
+                        all_legal_moves: None,
+                        attack_map: None,
+                        piece_maps: None,
+                        pseudolegal_moves: None,
                     }
                 )
                 .is_err(),

@@ -1,7 +1,7 @@
 use parser::RescueOrDrop;
 use serde::{Deserialize, Serialize};
 
-use crate::{Bitboard, Color, Piece, PieceType, Pos, Position};
+use crate::{pos, Bitboard, Color, Piece, PieceType, Pos, Position};
 
 mod parser;
 
@@ -307,11 +307,20 @@ impl PieceMove {
 /// Displays the move in algebraic notation.
 impl std::fmt::Display for PieceMove {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let MoveType::Castle { king: _, rook } = self.move_type {
-            if rook.get_col() == 0 {
-                write!(f, "O-O-O")?;
-            } else {
+        if let MoveType::Castle { .. } = self.move_type {
+            if self.from == pos::D1 && self.to == pos::B1 {
                 write!(f, "O-O")?;
+            } else if self.from == pos::D1 && self.to == pos::F1 {
+                write!(f, "O-O-O")?;
+            } else if self.from == pos::E1 && self.to == pos::C1 {
+                write!(f, "O-O-O")?;
+            } else if self.from == pos::E1 && self.to == pos::G1 {
+                write!(f, "O-O")?;
+            } else {
+                panic!(
+                    "Invalid rook position for castling: {} to {}",
+                    self.from, self.to
+                );
             }
 
             return Ok(());

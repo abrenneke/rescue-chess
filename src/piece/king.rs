@@ -95,9 +95,9 @@ impl ChessPiece for King {
 
 static WHITE_QUEEN_SIDE: LazyLock<Bitboard> = LazyLock::new(|| {
     let mut board = Bitboard::new();
+    board.set(pos::B1);
     board.set(pos::C1);
     board.set(pos::D1);
-    board.set(pos::E1);
     board
 });
 
@@ -323,11 +323,32 @@ mod tests {
         position
             .remove_piece_at(Pos::from_algebraic("c1").unwrap())
             .unwrap();
+        position
+            .remove_piece_at(Pos::from_algebraic("d1").unwrap())
+            .unwrap();
 
         let legal_moves = king.get_legal_moves(&position, true);
 
         // Verify that c1 (queenside castle square) is a legal move
         assert!(legal_moves.get(Pos::from_algebraic("c1").unwrap()));
+    }
+
+    #[test]
+    fn test_white_queenside_castling_blocked() {
+        let king = Piece::new_white(PieceType::King, Pos::from_algebraic("e1").unwrap());
+        let mut position = Position::start_position();
+
+        position
+            .remove_piece_at(Pos::from_algebraic("b1").unwrap())
+            .unwrap();
+        position
+            .remove_piece_at(Pos::from_algebraic("c1").unwrap())
+            .unwrap();
+
+        let legal_moves = king.get_legal_moves(&position, true);
+
+        // Verify that c1 (queenside castle square) is a legal move
+        assert!(!legal_moves.get(Pos::from_algebraic("c1").unwrap()));
     }
 
     #[test]

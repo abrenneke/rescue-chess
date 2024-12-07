@@ -31,10 +31,10 @@ impl Default for Features {
             enable_null_move_pruning: true,
             enable_history: true,
 
-            evaluate_bishop_pairs: true,
-            evaluate_pawn_structure: true,
-            evaluate_king_safety: true,
-            evaluate_mobility: true, // slow, over doubles search time
+            evaluate_bishop_pairs: false,
+            evaluate_pawn_structure: false,
+            evaluate_king_safety: false,
+            evaluate_mobility: false, // slow, over doubles search time
             evaluate_piece_coordination: false,
             evaluate_pawn_control: false,
             evaluate_piece_protection: false,
