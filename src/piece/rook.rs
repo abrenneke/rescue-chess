@@ -92,9 +92,14 @@ impl SquareBonus for Rook {
 }
 
 impl CanMove for Rook {
-    fn get_legal_moves(piece: &Piece, position: &Position) -> Bitboard {
+    fn get_legal_moves(piece: &Piece, position: &Position, exclude_white: bool) -> Bitboard {
         let moves = magic::get_rook_moves_magic(piece.position, position.all_map);
-        moves & !position.white_map
+
+        if exclude_white {
+            moves & !position.white_map
+        } else {
+            moves
+        }
     }
 }
 #[cfg(test)]
@@ -111,7 +116,7 @@ mod tests {
             ..Default::default()
         };
 
-        let legal_moves = piece.get_legal_moves(&position);
+        let legal_moves = piece.get_legal_moves(&position, true);
 
         assert_eq!(
             legal_moves,
@@ -153,7 +158,7 @@ mod tests {
             ..Default::default()
         };
 
-        let legal_moves = piece.get_legal_moves(&position);
+        let legal_moves = piece.get_legal_moves(&position, true);
 
         assert_eq!(
             legal_moves,
@@ -195,7 +200,7 @@ mod tests {
             ..Default::default()
         };
 
-        let legal_moves = piece.get_legal_moves(&position);
+        let legal_moves = piece.get_legal_moves(&position, true);
 
         assert_eq!(
             legal_moves,

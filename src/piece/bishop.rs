@@ -92,9 +92,14 @@ impl SquareBonus for Bishop {
 }
 
 impl CanMove for Bishop {
-    fn get_legal_moves(piece: &Piece, position: &Position) -> Bitboard {
+    fn get_legal_moves(piece: &Piece, position: &Position, exclude_white: bool) -> Bitboard {
         let moves = magic::get_bishop_moves_magic(piece.position, position.all_map);
-        moves & !position.white_map
+
+        if exclude_white {
+            moves & !position.white_map
+        } else {
+            moves
+        }
     }
 }
 
@@ -117,7 +122,7 @@ mod tests {
             ..Default::default()
         };
 
-        let legal_moves = bishop.get_legal_moves(&position);
+        let legal_moves = bishop.get_legal_moves(&position, true);
 
         assert_eq!(
             legal_moves,
@@ -146,7 +151,7 @@ mod tests {
             ..Default::default()
         };
 
-        let legal_moves = bishop.get_legal_moves(&position);
+        let legal_moves = bishop.get_legal_moves(&position, true);
 
         assert_eq!(
             legal_moves,
@@ -187,7 +192,7 @@ mod tests {
             ..Default::default()
         };
 
-        let legal_moves = bishop.get_legal_moves(&position);
+        let legal_moves = bishop.get_legal_moves(&position, true);
 
         assert_eq!(
             legal_moves,
@@ -228,7 +233,7 @@ mod tests {
             ..Default::default()
         };
 
-        let legal_moves = bishop.get_legal_moves(&position);
+        let legal_moves = bishop.get_legal_moves(&position, true);
 
         assert_eq!(
             legal_moves,

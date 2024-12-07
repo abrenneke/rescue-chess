@@ -2,10 +2,11 @@ pub mod ordering;
 pub mod square_bonus;
 
 use crate::{
-    piece_move::GameType, search::alpha_beta::SearchParams, Color, PieceType, Pos, Position,
+    piece::pawn, piece_move::GameType, search::alpha_beta::SearchParams, Bitboard, Color,
+    PieceType, Pos, Position,
 };
 
-pub fn evaluate_position(board: &Position, game_type: GameType, params: &SearchParams) -> i32 {
+pub fn evaluate_position(board: &Position, _game_type: GameType, params: &SearchParams) -> i32 {
     let mut score = 0;
 
     let inverted = board.inverted();
@@ -70,8 +71,8 @@ pub fn evaluate_position(board: &Position, game_type: GameType, params: &SearchP
 
     // Mobility evaluation
     if params.features.evaluate_mobility {
-        let white_mobility = evaluate_mobility(board, game_type);
-        let black_mobility = evaluate_mobility(&inverted, game_type);
+        let white_mobility = evaluate_mobility(board);
+        let black_mobility = evaluate_mobility(&inverted);
         score += white_mobility - black_mobility;
     }
 
@@ -81,140 +82,221 @@ pub fn evaluate_position(board: &Position, game_type: GameType, params: &SearchP
         score += white_coordination - black_coordination;
     }
 
+    if params.features.evaluate_pawn_control {
+        let white_pawn_control = evaluate_pawn_control(board);
+        let black_pawn_control = evaluate_pawn_control(&inverted);
+        score += white_pawn_control - black_pawn_control;
+    }
+
+    if params.features.evaluate_piece_protection {
+        let white_protection = evaluate_piece_protection(board);
+        let black_protection = evaluate_piece_protection(&inverted);
+        score += white_protection - black_protection;
+    }
+
     score
 }
 
 fn has_bishop_pair(position: &Position, color: Color) -> bool {
-    let mut light_square_bishop = false;
-    let mut dark_square_bishop = false;
-
-    let pieces = if color == Color::White {
-        &position.white_pieces
+    let bishop_map = if color == Color::White {
+        position.get_piece_maps().white_bishops
     } else {
-        &position.black_pieces
+        position.get_piece_maps().black_bishops
     };
 
-    for piece in pieces.iter() {
-        if let Some(piece) = piece {
-            if piece.color == color && piece.piece_type == PieceType::Bishop {
-                if (piece.position.0 + piece.position.get_row()) % 2 == 0 {
-                    light_square_bishop = true;
-                } else {
-                    dark_square_bishop = true;
-                }
-            }
-        }
-    }
-
-    light_square_bishop && dark_square_bishop
+    bishop_map.count() >= 2
+        && bishop_map.intersects(Bitboard::light_squares())
+        && bishop_map.intersects(Bitboard::dark_squares())
 }
 
 fn evaluate_pawn_structure(position: &Position) -> i32 {
-    let mut white_score = 0;
+    let maps = position.get_piece_maps();
+    let mut score = 0;
 
-    let mut white_pawns = vec![];
-    let mut black_pawns = vec![];
-
-    for piece in position.white_pieces.iter() {
-        if let Some(piece) = piece {
-            if piece.piece_type == PieceType::Pawn {
-                white_pawns.push(piece.position);
-            }
-        }
-    }
-
-    for piece in position.black_pieces.iter() {
-        if let Some(piece) = piece {
-            if piece.piece_type == PieceType::Pawn {
-                black_pawns.push(piece.position);
-            }
-        }
-    }
-
-    // Evaluate doubled pawns (penalize)
+    // Doubled pawns
     for file in 0..8 {
-        let white_pawns_in_file = white_pawns.iter().filter(|p| p.get_col() == file).count();
-
-        if white_pawns_in_file > 1 {
-            white_score -= 20 * (white_pawns_in_file as i32 - 1); // -0.2 per doubled pawn
+        let file_mask = Bitboard::for_file(file);
+        let pawns_in_file = (maps.white_pawns & file_mask).count();
+        if pawns_in_file > 1 {
+            score -= 20 * (pawns_in_file as i32 - 1);
         }
     }
 
-    // Evaluate isolated pawns (penalize)
-    for pawn_pos in white_pawns.iter() {
-        let file = pawn_pos.get_col();
-        let has_neighbor = white_pawns.iter().any(|p| {
-            (file > 0 && p.get_col() == file - 1) || (file < 7 && p.get_col() == file + 1)
-        });
-        if !has_neighbor {
-            white_score -= 30; // -0.3 for isolated pawn
+    // Isolated pawns
+    for file in 0..8 {
+        let pawns_on_file = maps.white_pawns & Bitboard::for_file(file);
+        if pawns_on_file.count() > 0 {
+            let adjacent_pawns = maps.white_pawns & Bitboard::adjacent_files(file);
+            if adjacent_pawns.count() == 0 {
+                score -= 30;
+            }
         }
     }
 
-    // Evaluate passed pawns (bonus)
-    for pawn_pos in white_pawns.iter() {
+    // Passed pawns
+    for pawn_pos in maps.white_pawns.into_iter() {
         let file = pawn_pos.get_col();
         let rank = pawn_pos.get_row();
-        let is_passed = !black_pawns.iter().any(|p| {
-            p.get_row() < rank  // Checks if any black pawns are ahead of this white pawn
-                && (p.get_col() == file // On same file
-                    || (file > 0 && p.get_col() == file - 1) // Or adjacent left file
-                    || (file < 7 && p.get_col() == file + 1)) // Or adjacent right file
-        });
-        if is_passed {
-            white_score += 50 + (7 - (rank as i32)) * 10; // Progressive bonus for advancement
+
+        // Check squares ahead in this and adjacent files
+        let passed_mask = Bitboard::for_file(file) | Bitboard::adjacent_files(file);
+        let passed_mask = passed_mask & Bitboard::ahead_of_rank_white(rank);
+
+        if !maps.black_pawns.intersects(passed_mask) {
+            score += 50 + (7 - rank as i32) * 10;
         }
     }
 
-    white_score
+    score
 }
 
 fn evaluate_king_safety(position: &Position) -> i32 {
-    let mut white_score = 0;
+    let maps = position.get_piece_maps();
+    let mut score = 0;
 
-    let white_king = position.white_king;
+    if let Some(king_pos) = maps.white_king.into_iter().next() {
+        let rank = king_pos.get_row();
+        let file = king_pos.get_col();
 
-    if let Some(white_king) = white_king {
-        // Pawn shield bonus
-        let shield_positions = [
-            (
-                white_king.get_col() as i32,
-                (white_king.get_row() as i32) - 1,
-            ),
-            (
-                (white_king.get_col() as i32 - 1),
-                (white_king.get_row() as i32 - 1),
-            ),
-            (
-                (white_king.get_col() as i32) + 1,
-                (white_king.get_row() as i32) - 1,
-            ),
-        ];
+        if !is_endgame(position) {
+            // Penalize king movement away from back rank in middlegame
+            if rank < 6 {
+                score -= 20 * (6 - rank) as i32;
+            }
 
-        for (file, rank) in shield_positions.iter() {
-            if *file > 0 && *file < 8 && *rank > 0 && *rank < 8 {
-                let pos = Pos::xy(*file as u8, *rank as u8);
-                if let Some(piece) = position.get_piece_at(pos) {
-                    if piece.piece_type == PieceType::Pawn && piece.color == Color::White {
-                        white_score += 20; // Bonus for each pawn protecting the king
-                    }
-                }
+            // Create pawn shield mask one rank in front of king
+            let shield_rank = rank - 1;
+            let shield_mask = Bitboard::for_file(file) | Bitboard::adjacent_files(file);
+            let shield_mask = shield_mask & Bitboard::for_rank(shield_rank);
+
+            // Count pawns in shield position
+            let shield_pawns = (maps.white_pawns & shield_mask).count();
+            score += shield_pawns as i32 * 20;
+
+            // Penalize open files near king
+            let king_and_adjacent = Bitboard::for_file(file) | Bitboard::adjacent_files(file);
+            let pawns_near_king = maps.white_pawns & king_and_adjacent;
+            score -= 15 * (3 - pawns_near_king.count() as i32);
+        } else {
+            // In endgame, king should be active and near pawns
+            let pawn_proximity = maps
+                .white_pawns
+                .into_iter()
+                .map(|p| manhattan_distance(king_pos, p))
+                .min()
+                .unwrap_or(7);
+            score += (7 - pawn_proximity as i32) * 10;
+
+            // Bonus for centralized king in endgame
+            let center_distance = manhattan_distance(king_pos, Pos::xy(3, 3));
+            score += (7 - center_distance as i32) * 5;
+        }
+    }
+
+    score
+}
+
+fn evaluate_pawn_control(position: &Position) -> i32 {
+    let mut score = 0;
+    let maps = position.get_piece_maps();
+
+    // Evaluate control of key central squares
+    let central_squares = Bitboard::center();
+    let white_pawn_attacks = pawn::generate_pawn_attacks(maps.white_pawns);
+
+    score += (white_pawn_attacks & central_squares).count() as i32 * 15;
+
+    // Evaluate pawn breaks and tension
+    for pawn_pos in maps.white_pawns.into_iter() {
+        let file = pawn_pos.get_col();
+        let rank = pawn_pos.get_row();
+
+        // Reward potential pawn breaks
+        let ahead_mask = Bitboard::ahead_of_rank_white(rank) & Bitboard::for_file(file);
+        if (ahead_mask & maps.black_pawns).count() == 1 {
+            score += 20; // Potential break
+        }
+    }
+
+    score
+}
+
+fn evaluate_piece_protection(position: &Position) -> i32 {
+    let mut score: i32 = 0;
+
+    for piece in &position.white_pieces {
+        if let Some(piece) = piece {
+            let pos = piece.position;
+            let attackers = position.count_attackers(pos, Color::White) as i32;
+            let defenders = position.count_attackers(pos, Color::Black) as i32;
+
+            // Base the importance of protection on piece value
+            let piece_importance: i32 = match piece.piece_type {
+                PieceType::Pawn => 1,
+                PieceType::Knight | PieceType::Bishop => 3,
+                PieceType::Rook => 4,
+                PieceType::Queen => 5,
+                PieceType::King => 6,
+            };
+
+            // Higher bonus for pieces that are well protected vs attacked
+            // Scale by piece importance
+            if attackers < defenders {
+                score += (attackers - defenders) * piece_importance * 5;
+            } else if defenders < attackers {
+                // Penalty for poorly protected pieces
+                score -= (defenders - attackers) * piece_importance * 5;
+            }
+
+            // Additional evaluation for pieces under direct threat
+            if attackers > 0 && piece_importance > 1 {
+                score -= 10 * piece_importance;
             }
         }
     }
 
-    white_score
+    score
 }
 
-fn evaluate_mobility(position: &Position, game_type: GameType) -> i32 {
+/// Returns the manhattan distance between two positions
+#[inline(always)]
+fn manhattan_distance(a: Pos, b: Pos) -> u8 {
+    let file_diff = a.get_col().abs_diff(b.get_col());
+    let rank_diff = a.get_row().abs_diff(b.get_row());
+    file_diff + rank_diff
+}
+
+/// Checks if the position is likely in the endgame based on material
+fn is_endgame(position: &Position) -> bool {
+    let maps = position.get_piece_maps();
+
+    // Count major pieces (queens and rooks)
+    let white_major = (maps.white_queens | maps.white_rooks).count();
+    let black_major = (maps.black_queens | maps.black_rooks).count();
+
+    // Count minor pieces (bishops and knights)
+    let white_minor = (maps.white_bishops | maps.white_knights).count();
+    let black_minor = (maps.black_bishops | maps.black_knights).count();
+
+    // We're in endgame if:
+    // 1. No queens or
+    // 2. Only one queen per side and no other major pieces and <= 1 minor piece each
+    maps.white_queens.count() + maps.black_queens.count() == 0
+        || (maps.white_queens.count() <= 1
+            && maps.black_queens.count() <= 1
+            && white_major == maps.white_queens.count()
+            && black_major == maps.black_queens.count()
+            && white_minor <= 1
+            && black_minor <= 1)
+}
+
+fn evaluate_mobility(position: &Position) -> i32 {
     let mut white_score = 0;
 
-    let legal_moves = position.get_all_legal_moves(game_type).unwrap();
+    let legal_moves = position.count_pseudolegal_moves();
 
-    for mv in legal_moves {
-        let piece = position.get_piece_at(mv.from).unwrap();
-        let mobility_bonus = mobility_bonus(piece.piece_type);
-
+    for (piece_type, move_count) in legal_moves {
+        let mobility_bonus = mobility_bonus(piece_type) * move_count as i32;
         white_score += mobility_bonus;
     }
 
@@ -230,7 +312,7 @@ fn evaluate_piece_coordination(position: &Position) -> i32 {
     // Count attacks on each square
     for piece in &position.white_pieces {
         if let Some(piece) = piece {
-            let legal_moves = piece.get_legal_moves(position);
+            let legal_moves = piece.get_legal_moves(position, true);
             for mv in legal_moves {
                 let col = mv.get_col() as usize;
                 let row = mv.get_row() as usize;
@@ -546,8 +628,8 @@ mod tests {
         );
 
         let white_score = evaluate_king_safety(&position);
-        // No pawn shield means no bonus
-        assert_eq!(white_score, 0);
+        // No pawn shield means no bonus, but endgame adds a little
+        assert_eq!(white_score, 10);
     }
 
     #[test]
@@ -616,7 +698,7 @@ mod tests {
 
         let white_score = evaluate_king_safety(&position);
         // Three pawns in shield = 60 points
-        assert_eq!(white_score, 60);
+        assert_eq!(white_score, 70);
     }
 
     #[test]
@@ -681,8 +763,8 @@ mod tests {
     #[test]
     fn test_evaluate_mobility_starting_position() {
         let position = Position::start_position();
-        let white_score = evaluate_mobility(&position, GameType::Classic);
-        let black_score = evaluate_mobility(&position.inverted(), GameType::Classic);
+        let white_score = evaluate_mobility(&position);
+        let black_score = evaluate_mobility(&position.inverted());
 
         // In starting position:
         // Knights: 2 possible moves each (4 total) * 4 points = 16
@@ -706,7 +788,7 @@ mod tests {
             1,
         );
 
-        let white_score = evaluate_mobility(&position, GameType::Classic);
+        let white_score = evaluate_mobility(&position);
         // Knight in center has 8 possible moves * 4 points = 32
         assert_eq!(white_score, 32);
     }
@@ -726,7 +808,7 @@ mod tests {
             1,
         );
 
-        let white_score = evaluate_mobility(&position, GameType::Classic);
+        let white_score = evaluate_mobility(&position);
         // Bishop in center has 13 possible moves * 3 points = 39
         assert_eq!(white_score, 39);
     }
@@ -746,7 +828,7 @@ mod tests {
             1,
         );
 
-        let white_score = evaluate_mobility(&position, GameType::Classic);
+        let white_score = evaluate_mobility(&position);
         // Rook in center has 14 possible moves * 2 points = 28
         assert_eq!(white_score, 28);
     }
@@ -766,7 +848,7 @@ mod tests {
             1,
         );
 
-        let white_score = evaluate_mobility(&position, GameType::Classic);
+        let white_score = evaluate_mobility(&position);
         // Queen in center has 27 possible moves * 1 point = 27
         assert_eq!(white_score, 27);
     }
@@ -776,7 +858,7 @@ mod tests {
         // Position with pieces blocked by friendly pieces
         let position = Position::parse_from_fen("8/8/8/8/8/8/PPPPP3/RPBQP3 w - - 0 1").unwrap();
 
-        let white_score = evaluate_mobility(&position, GameType::Classic);
+        let white_score = evaluate_mobility(&position);
         // Only pawns can move (1 square each) * 0 points = 0
         assert_eq!(white_score, 0);
     }
@@ -804,7 +886,7 @@ mod tests {
             1,
         );
 
-        let white_score = evaluate_mobility(&position, GameType::Classic);
+        let white_score = evaluate_mobility(&position);
         // Knight: 8 moves * 4 points = 32
         // Bishop: 13 moves * 3 points = 39
         // Total = 71
@@ -833,7 +915,7 @@ mod tests {
             1,
         );
 
-        let white_score = evaluate_mobility(&position, GameType::Classic);
+        let white_score = evaluate_mobility(&position);
         // King: 8 moves * 0 points = 0
         // Pawn: 1 move * 0 points = 0
         // Total = 0

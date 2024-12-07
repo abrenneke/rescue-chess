@@ -110,14 +110,14 @@ impl Piece {
         }
     }
 
-    pub fn get_legal_moves(&self, position: &Position) -> Bitboard {
+    pub fn get_legal_moves(&self, position: &Position, exclude_white: bool) -> Bitboard {
         match self.piece_type {
-            PieceType::Pawn => Pawn::get_legal_moves(self, position),
-            PieceType::Knight => Knight::get_legal_moves(self, position),
-            PieceType::Bishop => Bishop::get_legal_moves(self, position),
-            PieceType::Rook => Rook::get_legal_moves(self, position),
-            PieceType::Queen => Queen::get_legal_moves(self, position),
-            PieceType::King => King::get_legal_moves(self, position),
+            PieceType::Pawn => Pawn::get_legal_moves(self, position, exclude_white),
+            PieceType::Knight => Knight::get_legal_moves(self, position, exclude_white),
+            PieceType::Bishop => Bishop::get_legal_moves(self, position, exclude_white),
+            PieceType::Rook => Rook::get_legal_moves(self, position, exclude_white),
+            PieceType::Queen => Queen::get_legal_moves(self, position, exclude_white),
+            PieceType::King => King::get_legal_moves(self, position, exclude_white),
         }
     }
 

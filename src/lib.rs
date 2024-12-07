@@ -3,6 +3,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc; // 14% faster on Windows
 
 pub mod bitboard;
 pub mod evaluation;
+pub mod features;
 pub mod piece;
 pub mod piece_move;
 pub mod pos;

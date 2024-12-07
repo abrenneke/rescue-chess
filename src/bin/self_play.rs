@@ -1,8 +1,6 @@
 use clap::Parser;
 use rescue_chess::{
-    piece_move::GameType,
-    search::{alpha_beta::Features, game_state::GameState},
-    Color, Position,
+    features::Features, piece_move::GameType, search::game_state::GameState, Color, Position,
 };
 use std::{thread, time::Duration};
 
@@ -54,7 +52,6 @@ fn main() {
 
     let mut game_state = GameState {
         features: Features {
-            enable_lmr: true,
             ..Default::default()
         },
         debug_logs_verbose: true,

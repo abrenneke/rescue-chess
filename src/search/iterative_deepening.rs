@@ -16,13 +16,20 @@ pub struct IterativeDeepeningData {
     pub current_position: Position,
     pub transposition_table: TranspositionTable,
     pub stats: SearchStats,
+
     pub best_move: Option<PieceMove>,
     pub best_score: Option<i32>,
-    pub previous_pv: Option<PieceMove>,
+
+    pub prev_alpha: i32,
+    pub prev_beta: i32,
+
+    pub previous_pv: Option<Vec<PieceMove>>,
     pub ply: usize,
 
     pub on_new_best_move: Option<Box<OnNewBestMove>>,
 }
+
+const WINDOW_SIZE: i32 = 50;
 
 impl IterativeDeepeningData {
     pub fn new() -> Self {
@@ -35,6 +42,8 @@ impl IterativeDeepeningData {
             previous_pv: None,
             on_new_best_move: None,
             ply: 0,
+            prev_alpha: -2_000_000,
+            prev_beta: 2_000_000,
         }
     }
 
@@ -76,12 +85,12 @@ impl IterativeDeepeningData {
 
                     self.best_move = search_results.best_move;
                     self.best_score = Some(search_results.score);
-                    self.previous_pv = search_results.best_move;
+                    self.previous_pv = search_results.principal_variation;
 
                     depth += 1;
                 }
                 Err(e) => match e {
-                    alpha_beta::Error::Timeout => {
+                    alpha_beta::AlphaBetaError::Timeout => {
                         break;
                     }
                 },
@@ -95,11 +104,11 @@ impl IterativeDeepeningData {
         start_time: Instant,
         params_base: &SearchParams,
         ply: usize,
-    ) -> Result<SearchResults, alpha_beta::Error> {
+    ) -> Result<SearchResults, alpha_beta::AlphaBetaError> {
         let mut state = SearchState::new(&mut self.transposition_table);
         state.data.start_time = start_time;
         state.data.time_limit = params_base.time_limit;
-        state.data.previous_pv = self.previous_pv;
+        state.data.previous_pv = self.previous_pv.clone();
 
         if let Some(on_new_best_move) = self.on_new_best_move.as_deref() {
             state.callbacks.on_new_best_move = Some(on_new_best_move);
@@ -107,6 +116,9 @@ impl IterativeDeepeningData {
 
         let mut params = params_base.clone();
         params.depth = depth;
+        params.initial_alpha = self.prev_alpha - WINDOW_SIZE;
+        params.initial_beta = self.prev_beta + WINDOW_SIZE;
+        params.previous_score = self.best_score;
 
         let results = alpha_beta::search(&self.current_position, &mut state, params, ply);
 

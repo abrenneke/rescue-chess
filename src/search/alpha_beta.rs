@@ -2,6 +2,7 @@ use tracing::trace;
 
 use crate::{
     evaluation::{ordering::order_moves, piece_value},
+    features::Features,
     piece_move::GameType,
     Color, PieceMove, PieceType, Position,
 };
@@ -23,7 +24,9 @@ pub const STALEMATE: i32 = 0;
 
 #[derive(Debug, Clone)]
 pub struct SearchParams {
-    pub initial_bound: i32,
+    pub initial_alpha: i32,
+    pub initial_beta: i32,
+
     pub depth: u32,
     pub quiescence_depth: u32,
     pub time_limit: u64,
@@ -39,45 +42,11 @@ pub struct SearchParams {
     pub features: Features,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Features {
-    pub enable_transposition_table: bool,
-    pub enable_lmr: bool,
-    pub enable_window_search: bool,
-    pub enable_killer_moves: bool,
-    pub enable_null_move_pruning: bool,
-    pub enable_history: bool,
-
-    pub evaluate_bishop_pairs: bool,
-    pub evaluate_pawn_structure: bool,
-    pub evaluate_king_safety: bool,
-    pub evaluate_mobility: bool,
-    pub evaluate_piece_coordination: bool,
-}
-
-impl Default for Features {
-    fn default() -> Self {
-        Self {
-            enable_transposition_table: true,
-            enable_lmr: true,
-            enable_window_search: true,
-            enable_killer_moves: true,
-            enable_null_move_pruning: true,
-            enable_history: true,
-
-            evaluate_bishop_pairs: true,
-            evaluate_pawn_structure: true,
-            evaluate_king_safety: true,
-            evaluate_mobility: false, // slow, over doubles search time
-            evaluate_piece_coordination: true,
-        }
-    }
-}
-
 impl Default for SearchParams {
     fn default() -> Self {
         Self {
-            initial_bound: 2000000,
+            initial_alpha: MIN_ALPHA,
+            initial_beta: MAX_BETA,
             depth: 3,
             quiescence_depth: 4,
             time_limit: u64::MAX,
@@ -103,15 +72,15 @@ impl std::ops::Neg for SearchResult {
     }
 }
 
-#[derive(Debug)]
-pub enum Error {
+#[derive(Debug, Clone)]
+pub enum AlphaBetaError {
     Timeout,
 }
 
-impl std::fmt::Display for Error {
+impl std::fmt::Display for AlphaBetaError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::Timeout => write!(f, "Search timed out"),
+            AlphaBetaError::Timeout => write!(f, "Search timed out"),
         }
     }
 }
@@ -123,12 +92,81 @@ pub struct ScorePV {
 
 const WINDOW_MODIFIER: i32 = 2;
 
+pub const MIN_ALPHA: i32 = -2_000_000;
+pub const MAX_BETA: i32 = 2_000_000;
+
+pub struct MoveScore {
+    pub mv: PieceMove,
+    pub score: i32,
+    pub principal_variation: Option<Vec<PieceMove>>,
+}
+
+pub fn score_all_moves(
+    position: &Position,
+    state: &mut SearchState,
+    params: SearchParams,
+    ply: usize,
+) -> Result<Vec<MoveScore>, AlphaBetaError> {
+    let mut scores = Vec::new();
+    let mut position = position.clone();
+
+    // Get all legal moves
+    let moves = position.get_all_legal_moves(params.game_type).unwrap();
+    if moves.is_empty() {
+        // Handle checkmate or stalemate
+        if position.is_checkmate(params.game_type).unwrap() {
+            return Ok(vec![]);
+        }
+        return Ok(vec![]);
+    }
+
+    // Order moves using the existing move ordering function
+    let prev_pv = state.data.previous_pv.as_ref();
+    let ordered_moves = order_moves(&mut position, moves, prev_pv, state, ply, &params);
+
+    // Evaluate each move
+    for mv in ordered_moves {
+        let restore = position.apply_move(mv).unwrap();
+        position.invert();
+
+        // Use a wide window for accurate scoring
+        let result = alpha_beta(
+            &mut position,
+            params.initial_alpha,
+            params.initial_beta,
+            params.depth - 1,
+            state,
+            &params,
+            ply + 1,
+        );
+
+        position.invert();
+        position.unapply_move(mv, restore).unwrap();
+
+        match result {
+            Ok(search_result) => {
+                scores.push(MoveScore {
+                    mv,
+                    score: -search_result.score, // Negate score since it's from opponent's perspective
+                    principal_variation: search_result.principal_variation,
+                });
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    // Sort moves by score in descending order
+    scores.sort_by(|a, b| b.score.cmp(&a.score));
+
+    Ok(scores)
+}
+
 pub fn search(
     position: &Position,
     state: &mut SearchState,
     params: SearchParams,
     ply: usize,
-) -> Result<SearchResults, Error> {
+) -> Result<SearchResults, AlphaBetaError> {
     let mut alpha = match params.previous_score {
         Some(score) => score - params.window_size * WINDOW_MODIFIER,
         None => -params.window_size * WINDOW_MODIFIER,
@@ -142,9 +180,12 @@ pub fn search(
     let mut failures = 0;
 
     if !params.features.enable_window_search {
-        alpha = -params.initial_bound;
-        beta = params.initial_bound;
+        alpha = MIN_ALPHA;
+        beta = MAX_BETA;
     }
+
+    // Fine to clone the root position
+    let mut position = position.clone();
 
     loop {
         if position
@@ -161,13 +202,23 @@ pub fn search(
                 depth: params.depth,
                 time_taken_ms: state.data.start_time.elapsed().as_millis(),
                 pruned: state.data.pruned,
+                alpha,
+                beta,
             });
         }
 
-        alpha = alpha.max(-params.initial_bound);
-        beta = beta.min(params.initial_bound);
+        alpha = alpha.max(MIN_ALPHA);
+        beta = beta.min(MAX_BETA);
 
-        match alpha_beta(position, alpha, beta, params.depth, state, &params, ply) {
+        match alpha_beta(
+            &mut position,
+            alpha,
+            beta,
+            params.depth,
+            state,
+            &params,
+            ply,
+        ) {
             Ok(result) => {
                 if let Some(pv) = result.principal_variation {
                     if !pv.is_empty() {
@@ -184,11 +235,13 @@ pub fn search(
                             depth: params.depth,
                             time_taken_ms,
                             pruned: state.data.pruned,
+                            alpha,
+                            beta,
                         });
                     }
                 }
             }
-            Err(Error::Timeout) => return Err(Error::Timeout),
+            Err(AlphaBetaError::Timeout) => return Err(AlphaBetaError::Timeout),
         }
 
         if !params.features.enable_window_search {
@@ -211,14 +264,14 @@ pub fn search(
         beta += params.window_size * failures;
 
         // If window gets too big, just use full bounds
-        if beta - alpha >= params.initial_bound * 2 {
-            alpha = -params.initial_bound;
-            beta = params.initial_bound;
+        if beta - alpha >= params.initial_alpha * 5 {
+            alpha = MIN_ALPHA;
+            beta = MAX_BETA;
         }
 
         if failures > 10 {
-            alpha = -params.initial_bound;
-            beta = params.initial_bound;
+            alpha = MIN_ALPHA;
+            beta = MAX_BETA;
         }
 
         if failures > 11 {
@@ -273,22 +326,23 @@ fn should_reduce_move(
 }
 
 pub fn alpha_beta(
-    position: &Position,
+    position: &mut Position,
     alpha: i32,
     beta: i32,
     depth: u32,
     state: &mut SearchState,
     params: &SearchParams,
     ply: usize,
-) -> Result<SearchResult, Error> {
+) -> Result<SearchResult, AlphaBetaError> {
     let original_alpha = alpha;
 
     // If we have already searched this position to the same depth or greater,
     // we can use the cached result directly.
     if params.features.enable_transposition_table {
-        if let Some(entry) = state
-            .transposition_table
-            .try_get(position, depth, alpha, beta)
+        if let Some(entry) =
+            state
+                .transposition_table
+                .try_get(&position.to_hashable(), depth, alpha, beta)
         {
             if params.debug_print_verbose {
                 trace!(
@@ -300,11 +354,7 @@ pub fn alpha_beta(
 
             state.data.cached_positions += 1;
             return Ok(SearchResult {
-                principal_variation: Some(
-                    state
-                        .transposition_table
-                        .principal_variation_list(position, depth),
-                ),
+                principal_variation: Some(entry.principal_variation.clone()),
                 score: entry.score,
             });
         }
@@ -312,7 +362,7 @@ pub fn alpha_beta(
 
     // If we have exceeded the time limit, we should return an error.
     if state.data.start_time.elapsed().as_millis() >= state.data.time_limit as u128 {
-        return Err(Error::Timeout);
+        return Err(AlphaBetaError::Timeout);
     }
 
     // Increment the total number of nodes searched.
@@ -389,7 +439,7 @@ pub fn alpha_beta(
 
         // Search with a null window around beta
         match alpha_beta(
-            &null_pos,
+            &mut null_pos,
             -beta,
             -beta + 1,
             null_depth,
@@ -405,7 +455,7 @@ pub fn alpha_beta(
                     // Do a reduced-depth verification search when the margin is small
                     if null_score < beta + 100 {
                         match alpha_beta(
-                            &null_pos,
+                            &mut null_pos,
                             beta - 1,
                             beta,
                             depth - r - 1,
@@ -458,7 +508,7 @@ pub fn alpha_beta(
         });
     }
 
-    let prev_best_move = state.data.previous_pv;
+    let prev_best_move = state.data.previous_pv.as_ref();
     let ordered_moves = order_moves(position, moves, prev_best_move, state, ply, params);
 
     let mut iteration = SearchIteration {
@@ -479,8 +529,10 @@ pub fn alpha_beta(
         );
     }
 
+    let mut results = vec![];
+
     for (move_index, mv) in ordered_moves.iter().enumerate() {
-        if let Some(result) = test_move(
+        let result = test_move(
             *mv,
             position,
             &mut iteration,
@@ -488,7 +540,11 @@ pub fn alpha_beta(
             depth,
             move_index,
             ply,
-        ) {
+        );
+
+        results.push(result.clone());
+
+        if let Some(result) = result {
             return result;
         }
     }
@@ -504,12 +560,12 @@ pub fn alpha_beta(
     let principal_variation = iteration.principal_variation;
     let score = iteration.alpha;
 
-    // if principal_variation.is_none() {
-    //     panic!(
-    //         "No principal variation found. Alpha: {}, beta: {}, possible moves: {:?}",
-    //         alpha, beta, ordered_moves
-    //     );
-    // }
+    if principal_variation.is_none() {
+        panic!(
+            "No principal variation found. Alpha: {}, beta: {}, possible moves: {:?}",
+            alpha, beta, ordered_moves
+        );
+    }
 
     // Determine node type based on search result
     let node_type = if score <= original_alpha {
@@ -522,12 +578,12 @@ pub fn alpha_beta(
 
     if params.features.enable_transposition_table {
         if let Some(principal_variation) = &principal_variation {
-            iteration.state.transposition_table.insert(
-                position.clone(),
+            iteration.state.transposition_table.insert_if_better(
+                position.to_hashable(),
                 TranspositionTableEntry {
                     depth,
                     score,
-                    principal_variation: principal_variation.first().cloned(),
+                    principal_variation: principal_variation.clone(),
                     node_type,
                 },
             );
@@ -543,13 +599,13 @@ pub fn alpha_beta(
 // Modify the test_move function to implement LMR
 fn test_move(
     mv: PieceMove,
-    position: &Position,
+    position: &mut Position,
     iteration: &mut SearchIteration,
     params: &SearchParams,
     depth: u32,
     move_index: usize,
     ply: usize,
-) -> Option<Result<SearchResult, Error>> {
+) -> Option<Result<SearchResult, AlphaBetaError>> {
     if params.debug_print_verbose {
         trace!(
             "{}Testing move for {}: {} (alpha: {}, beta: {}) at {}",
@@ -570,12 +626,10 @@ fn test_move(
         );
     }
 
-    // Apply the move to a clone of the position
-    let mut child = position.clone();
-    child.apply_move(mv).unwrap();
-    let in_check = child.is_king_in_check().unwrap();
+    let restore = position.apply_move(mv).unwrap();
 
-    child.invert();
+    let in_check = position.is_king_in_check().unwrap();
+    position.invert();
 
     // Implement Late Move Reduction
     let mut score_pv: Option<ScorePV> = if params.features.enable_lmr
@@ -587,7 +641,15 @@ fn test_move(
             iteration.alpha,
             iteration.beta,
         ) {
-        let reduction = (depth.min(move_index as u32) / 3).max(1);
+        let reduction = if depth >= 6 {
+            // For deeper searches, scale reduction more carefully
+            ((depth as f32).ln().floor() as u32)
+                .min(move_index as u32 / 2)
+                .max(1)
+        } else {
+            // For shallower searches, use minimal reduction
+            1
+        };
 
         if params.debug_print_verbose {
             trace!(
@@ -599,7 +661,7 @@ fn test_move(
 
         // Reduced depth search
         let result = alpha_beta(
-            &child,
+            position,
             -iteration.alpha - 1, // Use a null window for reduced search
             -iteration.alpha,
             iteration.depth - 1 - reduction,
@@ -642,7 +704,7 @@ fn test_move(
         }
 
         match alpha_beta(
-            &child,
+            position,
             -iteration.beta,
             -iteration.alpha,
             iteration.depth - 1,
@@ -676,11 +738,11 @@ fn test_move(
 
         if params.features.enable_transposition_table {
             iteration.state.transposition_table.insert(
-                position.clone(),
+                position.to_hashable(),
                 TranspositionTableEntry {
                     depth,
                     score: iteration.beta,
-                    principal_variation: Some(mv),
+                    principal_variation: vec![mv],
                     node_type: NodeType::LowerBound,
                 },
             );
@@ -695,6 +757,9 @@ fn test_move(
                 iteration.beta,
             );
         }
+
+        position.invert();
+        position.unapply_move(mv, restore).unwrap();
 
         return Some(Ok(SearchResult {
             principal_variation: None,
@@ -729,6 +794,11 @@ fn test_move(
                 on_new_best_move(mv, iteration.alpha);
             }
         }
+    } else if iteration.principal_variation.is_none() {
+        // The move didn't beta cutoff, and didn't improve alpha, but we don't yet have a
+        // principal variation. So this move is equivalent to the best move we've found so far, so
+        // store it in the principal variation for this node until we find a better move.
+        iteration.principal_variation = Some(vec![mv]);
     }
 
     if params.debug_print_verbose {
@@ -739,6 +809,9 @@ fn test_move(
             score_pv.score
         );
     }
+
+    position.invert();
+    position.unapply_move(mv, restore).unwrap();
 
     None
 }
@@ -1190,7 +1263,7 @@ pub mod tests {
         test_one_of_best_moves(
             "1kr5/3n4/q3p2p/p2n2p1/PppB1P2/5BP1/1P2Q2P/3R2K1 w - - 0 1",
             &["f5"],
-            10,
+            12,
         );
     }
 }

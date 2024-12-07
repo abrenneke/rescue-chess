@@ -19,6 +19,8 @@ pub struct SearchResults {
     pub time_taken_ms: u128,
     pub pruned: u32,
     pub principal_variation: Option<Vec<PieceMove>>,
+    pub alpha: i32,
+    pub beta: i32,
 }
 
 pub struct SearchState<'table, 'a> {
@@ -37,7 +39,7 @@ pub struct SearchStateData {
     pub time_limit: u64,
     pub pruned: u32,
     pub best_move_so_far: Option<PieceMove>,
-    pub previous_pv: Option<PieceMove>,
+    pub previous_pv: Option<Vec<PieceMove>>,
 }
 
 pub struct SearchStateCallbacks<'a> {
@@ -68,7 +70,7 @@ impl SearchStats {
         self.nodes_searched += stats.nodes_searched;
         self.cached_positions += stats.cached_positions;
         self.pruned += stats.pruned;
-        self.time_taken_ms += stats.time_taken_ms;
+        self.time_taken_ms = stats.time_taken_ms;
     }
 }
 

@@ -104,12 +104,12 @@ impl SquareBonus for Knight {
     }
 }
 
-impl CanMove for Knight {
-    fn get_legal_moves(piece: &Piece, position: &Position) -> Bitboard {
-        let mut board = Bitboard::new();
-        let pos = piece.position;
+static KNIGHT_MOVE_TABLE: LazyLock<[Bitboard; 64]> = LazyLock::new(|| {
+    let mut boards = [Bitboard::new(); 64];
 
-        let white = position.white_map;
+    for pos in 0..64 {
+        let mut board = Bitboard::new();
+        let pos = Pos(pos as u8);
 
         // Up left
         if let Some(pos) = pos.moved(-1, -2) {
@@ -151,7 +151,21 @@ impl CanMove for Knight {
             board.set(pos);
         }
 
-        board & !white
+        boards[pos.0 as usize] = board;
+    }
+
+    boards
+});
+
+impl CanMove for Knight {
+    fn get_legal_moves(piece: &Piece, position: &Position, exclude_white: bool) -> Bitboard {
+        let board = KNIGHT_MOVE_TABLE[piece.position.0 as usize];
+
+        if exclude_white {
+            board & !position.white_map
+        } else {
+            board
+        }
     }
 }
 
@@ -169,7 +183,7 @@ mod tests {
             ..Default::default()
         };
 
-        let legal_moves = knight.get_legal_moves(&position);
+        let legal_moves = knight.get_legal_moves(&position, true);
 
         assert_eq!(
             legal_moves,
@@ -198,7 +212,7 @@ mod tests {
             ..Default::default()
         };
 
-        let legal_moves = knight.get_legal_moves(&position);
+        let legal_moves = knight.get_legal_moves(&position, true);
 
         assert_eq!(
             legal_moves,

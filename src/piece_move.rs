@@ -6,7 +6,7 @@ use crate::{Bitboard, Color, Piece, PieceType, Pos, Position};
 mod parser;
 
 pub trait CanMove {
-    fn get_legal_moves(piece: &Piece, position: &Position) -> Bitboard;
+    fn get_legal_moves(piece: &Piece, position: &Position, exclude_white: bool) -> Bitboard;
 }
 
 /// A move that a chess piece can make.

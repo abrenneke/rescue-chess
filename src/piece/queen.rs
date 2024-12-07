@@ -117,7 +117,8 @@ impl SquareBonus for Queen {
 }
 
 impl CanMove for Queen {
-    fn get_legal_moves(piece: &Piece, position: &Position) -> Bitboard {
-        Bishop::get_legal_moves(piece, position) | Rook::get_legal_moves(piece, position)
+    fn get_legal_moves(piece: &Piece, position: &Position, exclude_white: bool) -> Bitboard {
+        Bishop::get_legal_moves(piece, position, exclude_white)
+            | Rook::get_legal_moves(piece, position, exclude_white)
     }
 }

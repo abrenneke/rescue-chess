@@ -93,7 +93,7 @@ impl ChessPiece for King {
 }
 
 impl CanMove for King {
-    fn get_legal_moves(piece: &Piece, position: &Position) -> Bitboard {
+    fn get_legal_moves(piece: &Piece, position: &Position, exclude_white: bool) -> Bitboard {
         let pos = piece.position;
 
         let mut board = ATTACK_MAPS[pos.0 as usize] & !position.white_map;
@@ -107,7 +107,7 @@ impl CanMove for King {
                     && position
                         .get_piece_at(Pos::from_algebraic("a1").unwrap())
                         .is_some_and(|p| p.color == Color::White && p.piece_type == PieceType::Rook)
-                    && !King::is_in_check(&position)
+                    && !King::is_white_king_in_check(&position)
                 {
                     board.set(Pos::from_algebraic("c1").unwrap());
                 }
@@ -119,7 +119,7 @@ impl CanMove for King {
                     && position
                         .get_piece_at(Pos::from_algebraic("h1").unwrap())
                         .is_some_and(|p| p.color == Color::White && p.piece_type == PieceType::Rook)
-                    && !King::is_in_check(&position)
+                    && !King::is_white_king_in_check(&position)
                 {
                     board.set(Pos::from_algebraic("g1").unwrap());
                 }
@@ -136,7 +136,7 @@ impl CanMove for King {
                     && position
                         .get_piece_at(Pos::from_algebraic("h1").unwrap())
                         .is_some_and(|p| p.color == Color::White && p.piece_type == PieceType::Rook)
-                    && !King::is_in_check(&position)
+                    && !King::is_white_king_in_check(&position)
                 {
                     board.set(Pos::from_algebraic("f1").unwrap());
                 }
@@ -149,19 +149,23 @@ impl CanMove for King {
                     && position
                         .get_piece_at(Pos::from_algebraic("a1").unwrap())
                         .is_some_and(|p| p.color == Color::White && p.piece_type == PieceType::Rook)
-                    && !King::is_in_check(&position)
+                    && !King::is_white_king_in_check(&position)
                 {
                     board.set(Pos::from_algebraic("b1").unwrap());
                 }
             }
         }
 
-        board & !position.white_map
+        if exclude_white {
+            board & !position.white_map
+        } else {
+            board
+        }
     }
 }
 
 impl King {
-    pub fn is_in_check(position: &Position) -> bool {
+    pub fn is_white_king_in_check(position: &Position) -> bool {
         let king = position.white_king;
 
         match king {
@@ -225,6 +229,71 @@ impl King {
             None => false,
         }
     }
+
+    pub fn is_black_king_in_check(position: &Position) -> bool {
+        let king = position.black_king;
+
+        match king {
+            Some(king) => {
+                // Pawns
+                if let Some(pos) = king.moved(-1, 1) {
+                    if position.is_piece_at(pos, &[PieceType::Pawn], Color::White) {
+                        return true;
+                    }
+                }
+
+                if let Some(pos) = king.moved(1, 1) {
+                    if position.is_piece_at(pos, &[PieceType::Pawn], Color::White) {
+                        return true;
+                    }
+                }
+
+                // Use magic bitboards to get sliding piece attacks
+                let blockers = position.all_map;
+
+                // Get all possible rook attacks from king's position
+                let rook_attacks = super::rook::magic::get_rook_moves_magic(king, blockers);
+                let rook_attackers = rook_attacks & position.white_map;
+
+                // Check if any of those squares have a rook or queen
+                if rook_attackers.into_iter().any(|pos| {
+                    position.is_piece_at(pos, &[PieceType::Rook, PieceType::Queen], Color::White)
+                }) {
+                    return true;
+                }
+
+                // Get all possible bishop attacks from king's position
+                let bishop_attacks = super::bishop::magic::get_bishop_moves_magic(king, blockers);
+                let bishop_attackers = bishop_attacks & position.white_map;
+
+                // Check if any of those squares have a bishop or queen
+                if bishop_attackers.into_iter().any(|pos| {
+                    position.is_piece_at(pos, &[PieceType::Bishop, PieceType::Queen], Color::White)
+                }) {
+                    return true;
+                }
+
+                let knight_attackers = *super::knight::attack_map(king) & position.white_map;
+                if knight_attackers
+                    .into_iter()
+                    .any(|pos| position.is_piece_at(pos, &[PieceType::Knight], Color::White))
+                {
+                    return true;
+                }
+
+                let king_attackers = *attack_map(king) & position.white_map;
+                if king_attackers
+                    .into_iter()
+                    .any(|pos| position.is_piece_at(pos, &[PieceType::King], Color::White))
+                {
+                    return true;
+                }
+
+                false
+            }
+            None => false,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -241,7 +310,7 @@ mod tests {
             ..Default::default()
         };
 
-        let legal_moves = king.get_legal_moves(&position);
+        let legal_moves = king.get_legal_moves(&position, true);
 
         assert_eq!(
             legal_moves,
@@ -272,7 +341,7 @@ mod tests {
             .remove_piece_at(Pos::from_algebraic("g1").unwrap())
             .unwrap();
 
-        let legal_moves = king.get_legal_moves(&position);
+        let legal_moves = king.get_legal_moves(&position, true);
 
         // Verify that g1 (kingside castle square) is a legal move
         assert!(legal_moves.get(Pos::from_algebraic("g1").unwrap()));
@@ -291,7 +360,7 @@ mod tests {
             .remove_piece_at(Pos::from_algebraic("f1").unwrap())
             .unwrap();
 
-        let legal_moves = king.get_legal_moves(&position);
+        let legal_moves = king.get_legal_moves(&position, true);
 
         // Verify that g1 is not a legal move when blocked
         assert!(!legal_moves.get(Pos::from_algebraic("g1").unwrap()));
@@ -309,7 +378,7 @@ mod tests {
             .remove_piece_at(Pos::from_algebraic("c1").unwrap())
             .unwrap();
 
-        let legal_moves = king.get_legal_moves(&position);
+        let legal_moves = king.get_legal_moves(&position, true);
 
         // Verify that c1 (queenside castle square) is a legal move
         assert!(legal_moves.get(Pos::from_algebraic("c1").unwrap()));
@@ -324,7 +393,7 @@ mod tests {
             .remove_piece_at(Pos::from_algebraic("b1").unwrap())
             .unwrap();
 
-        let legal_moves = king.get_legal_moves(&position);
+        let legal_moves = king.get_legal_moves(&position, true);
 
         // Verify neither castling move is legal when rights are disabled
         assert!(!legal_moves.get(Pos::from_algebraic("g1").unwrap()));
@@ -346,7 +415,7 @@ mod tests {
         let legal_moves = position
             .get_piece_at(position.white_king.unwrap())
             .unwrap()
-            .get_legal_moves(&position);
+            .get_legal_moves(&position, true);
 
         assert!(legal_moves.get(Pos::from_algebraic("b1").unwrap()));
     }
@@ -363,7 +432,7 @@ mod tests {
         let legal_moves = position
             .get_piece_at(position.white_king.unwrap())
             .unwrap()
-            .get_legal_moves(&position);
+            .get_legal_moves(&position, true);
 
         assert!(!legal_moves.get(Pos::from_algebraic("b1").unwrap()));
     }
@@ -386,7 +455,7 @@ mod tests {
         let legal_moves = position
             .get_piece_at(position.white_king.unwrap())
             .unwrap()
-            .get_legal_moves(&position);
+            .get_legal_moves(&position, true);
 
         assert!(legal_moves.get(Pos::from_algebraic("f1").unwrap()));
     }
@@ -406,7 +475,7 @@ mod tests {
         let legal_moves = position
             .get_piece_at(position.white_king.unwrap())
             .unwrap()
-            .get_legal_moves(&position);
+            .get_legal_moves(&position, true);
 
         assert!(!legal_moves.get(Pos::from_algebraic("f1").unwrap()));
     }
@@ -421,7 +490,7 @@ mod tests {
         let legal_moves = position
             .get_piece_at(position.white_king.unwrap())
             .unwrap()
-            .get_legal_moves(&position);
+            .get_legal_moves(&position, true);
 
         println!("{}", legal_moves);
     }

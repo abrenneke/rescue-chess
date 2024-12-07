@@ -64,6 +64,83 @@ impl Bitboard {
 
         Bitboard(result)
     }
+
+    #[inline(always)]
+    pub fn for_rank(rank: u8) -> Self {
+        debug_assert!(rank < 8);
+        Bitboard(0xFF << (rank * 8))
+    }
+
+    /// Returns a bitboard with all bits set in the given file (0-7)
+    #[inline(always)]
+    pub fn for_file(file: u8) -> Self {
+        debug_assert!(file < 8);
+        Bitboard(0x0101010101010101u64 << file)
+    }
+
+    /// Returns a bitboard representing squares ahead of the given rank for white
+    #[inline(always)]
+    pub fn ahead_of_rank_black(rank: u8) -> Self {
+        debug_assert!(rank < 8);
+        Bitboard(!((1u64 << ((rank + 1) * 8)) - 1))
+    }
+
+    /// Returns a bitboard representing squares ahead of the given rank for black
+    #[inline(always)]
+    pub fn ahead_of_rank_white(rank: u8) -> Self {
+        debug_assert!(rank < 8);
+        Bitboard((1u64 << (rank * 8)) - 1)
+    }
+
+    /// Returns a bitboard representing the central four squares (d4, e4, d5, e5)
+    #[inline(always)]
+    pub fn center() -> Self {
+        Bitboard(0x0000001818000000u64)
+    }
+
+    /// Returns a bitboard representing the extended center (16 squares)
+    #[inline(always)]
+    pub fn extended_center() -> Self {
+        Bitboard(0x00003C3C3C3C0000u64)
+    }
+
+    /// Returns a bitboard of all light squares
+    #[inline(always)]
+    pub fn light_squares() -> Self {
+        Bitboard(0x55AA55AA55AA55AAu64)
+    }
+
+    /// Returns a bitboard of all dark squares
+    #[inline(always)]
+    pub fn dark_squares() -> Self {
+        !Self::light_squares()
+    }
+
+    /// Returns a bitboard representing adjacent files
+    #[inline(always)]
+    pub fn adjacent_files(file: u8) -> Self {
+        debug_assert!(file < 8);
+        let mut mask = 0u64;
+        if file > 0 {
+            mask |= Self::for_file(file - 1).0;
+        }
+        if file < 7 {
+            mask |= Self::for_file(file + 1).0;
+        }
+        Bitboard(mask)
+    }
+
+    /// Returns whether this bitboard intersects with another
+    #[inline(always)]
+    pub fn intersects(&self, other: Self) -> bool {
+        (self.0 & other.0) != 0
+    }
+
+    /// Returns whether this bitboard contains all bits from another
+    #[inline(always)]
+    pub fn contains(&self, other: Self) -> bool {
+        (self.0 & other.0) == other.0
+    }
 }
 
 pub struct BitboardIter {
@@ -381,5 +458,55 @@ mod tests {
                 "Inverted board should still have exactly one bit set"
             );
         }
+    }
+
+    #[test]
+    fn files() {
+        println!("{}", Bitboard::from(0x0101010101010101 << 1));
+    }
+
+    #[test]
+    fn for_rank() {
+        println!("{}", Bitboard::for_rank(3));
+    }
+
+    #[test]
+    fn for_file() {
+        println!("{}", Bitboard::for_file(3));
+    }
+
+    #[test]
+    fn ahead_of_rank_white() {
+        println!("{}", Bitboard::ahead_of_rank_white(3));
+    }
+
+    #[test]
+    fn ahead_of_rank_black() {
+        println!("{}", Bitboard::ahead_of_rank_black(3));
+    }
+
+    #[test]
+    fn center() {
+        println!("{}", Bitboard::center());
+    }
+
+    #[test]
+    fn extended_center() {
+        println!("{}", Bitboard::extended_center());
+    }
+
+    #[test]
+    fn light_squares() {
+        println!("{}", Bitboard::light_squares());
+    }
+
+    #[test]
+    fn dark_squares() {
+        println!("{}", Bitboard::dark_squares());
+    }
+
+    #[test]
+    fn adjacent_files() {
+        println!("{}", Bitboard::adjacent_files(3));
     }
 }

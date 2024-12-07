@@ -75,7 +75,7 @@ impl SquareBonus for Pawn {
 }
 
 impl CanMove for Pawn {
-    fn get_legal_moves(piece: &Piece, position: &Position) -> Bitboard {
+    fn get_legal_moves(piece: &Piece, position: &Position, exclude_white: bool) -> Bitboard {
         let mut board = Bitboard::new();
         let pos = piece.position;
 
@@ -127,8 +127,22 @@ impl CanMove for Pawn {
             board.set(pos.moved_unchecked(1, -1));
         }
 
-        board & !white
+        if exclude_white {
+            board = board & !white;
+        }
+
+        board
     }
+}
+
+pub fn generate_pawn_attacks(pawn_bitboard: Bitboard) -> Bitboard {
+    let mut attacks = Bitboard::new();
+
+    for pos in pawn_bitboard {
+        attacks = attacks | ATTACK_MAPS[pos.0 as usize];
+    }
+
+    attacks
 }
 
 #[cfg(test)]
@@ -139,7 +153,7 @@ mod tests {
     #[test]
     pub fn move_from_starting_position() {
         let pawn = Piece::new_white(PieceType::Pawn, (4, 6).into());
-        let legal_moves = Pawn::get_legal_moves(&pawn, &Default::default());
+        let legal_moves = Pawn::get_legal_moves(&pawn, &Default::default(), true);
         assert_eq!(
             legal_moves,
             r#"
@@ -180,7 +194,7 @@ mod tests {
             ..Default::default()
         };
 
-        let legal_moves = Pawn::get_legal_moves(&pawn, &position);
+        let legal_moves = Pawn::get_legal_moves(&pawn, &position, true);
         assert_eq!(
             legal_moves,
             r#"
@@ -221,7 +235,7 @@ mod tests {
             ..Default::default()
         };
 
-        let legal_moves = Pawn::get_legal_moves(&pawn, &position);
+        let legal_moves = Pawn::get_legal_moves(&pawn, &position, true);
         assert_eq!(
             legal_moves,
             r#"
@@ -262,7 +276,7 @@ mod tests {
             ..Default::default()
         };
 
-        let legal_moves = Pawn::get_legal_moves(&pawn, &position);
+        let legal_moves = Pawn::get_legal_moves(&pawn, &position, true);
         assert_eq!(
             legal_moves,
             r#"
@@ -303,7 +317,7 @@ mod tests {
             ..Default::default()
         };
 
-        let legal_moves = Pawn::get_legal_moves(&pawn, &position);
+        let legal_moves = Pawn::get_legal_moves(&pawn, &position, true);
         assert_eq!(
             legal_moves,
             r#"
@@ -331,7 +345,7 @@ mod tests {
             ..Default::default()
         };
 
-        let legal_moves = Pawn::get_legal_moves(&pawn, &position);
+        let legal_moves = Pawn::get_legal_moves(&pawn, &position, true);
         assert_eq!(
             legal_moves,
             r#"

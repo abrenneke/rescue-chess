@@ -2,17 +2,20 @@ use std::collections::HashMap;
 
 use tracing::trace;
 
-use crate::{piece_move::GameType, Color, PieceMove, Position};
+use crate::{
+    features::Features, piece_move::GameType, position::HashablePosition, Color, PieceMove,
+    Position,
+};
 
 use super::{
-    alpha_beta::{Features, SearchParams},
+    alpha_beta::SearchParams,
     iterative_deepening::{IterativeDeepeningData, OnNewBestMove},
     search_results::SearchStats,
 };
 
 pub struct GameState {
     /// A map from positions to the number of times that position has been visited.
-    pub positions: HashMap<Position, usize>,
+    pub positions: HashMap<HashablePosition, usize>,
 
     /// The current position.
     pub current_position: Position,
@@ -60,7 +63,9 @@ impl GameState {
             time_limit_ms: 5_000,
         };
 
-        state.positions.insert(state.current_position.clone(), 1);
+        state
+            .positions
+            .insert(state.current_position.to_hashable(), 1);
 
         state
     }
@@ -71,7 +76,9 @@ impl GameState {
             ..Default::default()
         };
 
-        state.positions.insert(state.current_position.clone(), 1);
+        state
+            .positions
+            .insert(state.current_position.to_hashable(), 1);
 
         state
     }
@@ -112,7 +119,7 @@ impl GameState {
 
         *self
             .positions
-            .entry(self.current_position.clone())
+            .entry(self.current_position.to_hashable())
             .or_insert(0) += 1;
 
         self.num_plies += 1;
@@ -128,7 +135,10 @@ impl GameState {
     }
 
     pub fn times_current_position_seen(&self) -> usize {
-        *self.positions.get(&self.current_position).unwrap_or(&0)
+        *self
+            .positions
+            .get(&self.current_position.to_hashable())
+            .unwrap_or(&0)
     }
 
     pub fn previous_score(&self, color: Color) -> Option<i32> {
@@ -176,7 +186,7 @@ impl GameState {
             return Err(anyhow::anyhow!("No best move found"));
         }
 
-        if self.positions[&self.current_position] > 1 {
+        if self.positions[&self.current_position.to_hashable()] > 1 {
             if self.debug_logs_verbose {
                 trace!(
                     "Position has been seen > 1 time, increasing depth to {}",

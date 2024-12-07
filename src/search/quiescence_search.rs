@@ -7,7 +7,7 @@ use crate::{
 };
 
 use super::{
-    alpha_beta::{Error, SearchParams, SearchResult, CHECKMATE},
+    alpha_beta::{AlphaBetaError, SearchParams, SearchResult, CHECKMATE},
     search_results::SearchState,
 };
 
@@ -19,7 +19,7 @@ pub fn quiescence_search(
     state: &mut SearchState,
     params: &SearchParams,
     initial_depth: u32,
-) -> Result<SearchResult, Error> {
+) -> Result<SearchResult, AlphaBetaError> {
     if position.is_checkmate(params.game_type).unwrap() {
         if params.debug_print_verbose {
             trace!(

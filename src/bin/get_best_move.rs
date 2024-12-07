@@ -2,7 +2,8 @@ use clap::Parser;
 use rescue_chess::{
     piece_move::GameType,
     search::{
-        alpha_beta::{self, Features, SearchParams},
+        alpha_beta::{self, SearchParams},
+        iterative_deepening::IterativeDeepeningData,
         search_results::SearchState,
         transposition_table::TranspositionTable,
     },
@@ -28,6 +29,9 @@ struct Cli {
 
     #[arg(long)]
     pub print_valid_moves: bool,
+
+    #[arg(long)]
+    pub all_scores: bool,
 
     #[arg(short = 'v', long)]
     pub verbose: bool,
@@ -79,41 +83,107 @@ fn main() {
                 );
             }
 
-            let mut transposition_table = TranspositionTable::new();
-            let mut state = SearchState::new(&mut transposition_table);
+            let mut iterative_deepening_data = IterativeDeepeningData::new();
+
+            iterative_deepening_data.update_position(position.clone());
 
             let params = SearchParams {
                 depth,
                 game_type,
-                // debug_print: true,
-                // debug_print_all_moves: true,
-                debug_print_verbose: args.verbose,
-                // enable_transposition_table: false,
-                features: Features {
-                    ..Default::default()
-                },
-                // enable_window_search: false,
                 ..Default::default()
             };
 
-            let result = alpha_beta::search(&position, &mut state, params, 0).unwrap();
+            iterative_deepening_data.search(params.clone());
+
+            let best_move = iterative_deepening_data.best_move;
+            let best_score = iterative_deepening_data.best_score;
 
             if position.true_active_color == Color::White {
-                println!("{}", result.best_move.unwrap());
+                println!("{}", best_move.unwrap());
             } else {
-                println!("{}", result.best_move.unwrap().inverted());
+                println!("{}", best_move.unwrap().inverted());
+            }
+
+            if args.all_scores {
+                println!("Getting all scores...");
+
+                let mut transposition_table = TranspositionTable::new();
+                let mut state = SearchState::new(&mut transposition_table);
+
+                let scored_moves =
+                    alpha_beta::score_all_moves(&position, &mut state, params.clone(), 0).unwrap();
+
+                for scored_move in scored_moves {
+                    let mut principal_variation = vec![scored_move.mv];
+                    let mut is_black = position.true_active_color != Color::Black;
+
+                    for mv in scored_move.principal_variation.unwrap_or_default() {
+                        if is_black {
+                            principal_variation.push(mv.inverted());
+                        } else {
+                            principal_variation.push(mv);
+                        }
+                        is_black = !is_black;
+                    }
+
+                    println!(
+                        "{}: {}    {{{:?}}}",
+                        scored_move.mv, scored_move.score, principal_variation
+                    );
+                }
             }
 
             if args.stats {
-                println!("Nodes searched: {}", state.data.nodes_searched);
-                println!("Cached positions: {}", state.data.cached_positions);
+                println!("------------------------------------");
+                println!(
+                    "Nodes searched: {}",
+                    iterative_deepening_data.stats.nodes_searched
+                );
+                println!(
+                    "Cached positions: {}",
+                    iterative_deepening_data.stats.cached_positions
+                );
                 println!(
                     "Time taken: {}ms",
-                    state.data.start_time.elapsed().as_millis()
+                    iterative_deepening_data.stats.time_taken_ms
                 );
-                println!("Pruned: {}", state.data.pruned);
-                println!("Score: {}", result.score);
-                println!("Principal variation: {:?}", result.principal_variation);
+                println!("Pruned: {}", iterative_deepening_data.stats.pruned);
+                println!("Score: {}", best_score.unwrap());
+
+                let mut principal_variation = vec![];
+                let mut is_black = position.true_active_color == Color::Black;
+                for mv in iterative_deepening_data
+                    .previous_pv
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                {
+                    if is_black {
+                        principal_variation.push(mv.inverted());
+                    } else {
+                        principal_variation.push(mv.clone());
+                    }
+                    is_black = !is_black;
+                }
+
+                println!("Principal variation: {:?}", principal_variation);
+
+                let mut current_position = position.clone();
+                for mv in iterative_deepening_data
+                    .previous_pv
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                {
+                    current_position.apply_move(mv.clone()).unwrap();
+                    current_position.invert();
+                }
+
+                println!(
+                    "Final board state (scored {}) after principal variation: {}",
+                    best_score.unwrap(),
+                    current_position.to_fen()
+                );
             }
         }
         Err(e) => {

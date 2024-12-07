@@ -25,9 +25,9 @@ impl Ord for ScoredMove {
 }
 
 pub fn order_moves(
-    position: &Position,
+    position: &mut Position,
     moves: Vec<PieceMove>,
-    prev_best_move: Option<PieceMove>,
+    prev_pv: Option<&Vec<PieceMove>>,
     state: &SearchState,
     ply: usize,
     params: &SearchParams,
@@ -35,6 +35,8 @@ pub fn order_moves(
     let mut scored_moves: Vec<ScoredMove> = moves
         .into_iter()
         .map(|mv| {
+            let prev_best_move = prev_pv.as_ref().and_then(|pv| pv.get(ply)).cloned();
+
             let score = score_move(position, &mv, prev_best_move, state, ply, params);
             ScoredMove { score, mv }
         })
@@ -47,7 +49,7 @@ pub fn order_moves(
 }
 
 fn score_move(
-    position: &Position,
+    position: &mut Position,
     mv: &PieceMove,
     prev_best_move: Option<PieceMove>,
     state: &SearchState,
@@ -63,11 +65,10 @@ fn score_move(
 
     // Check moves should be prioritized
     {
-        let mut position = position.clone();
-        position.apply_move(mv.clone()).unwrap();
-        position.invert();
+        let restore = position.apply_move(mv.clone()).unwrap();
 
-        if position.is_king_in_check().unwrap() {
+        if position.is_black_king_in_check().unwrap() {
+            position.invert();
             score += 25_000;
 
             let escape_moves = position.get_all_legal_moves(params.game_type).unwrap();
@@ -75,7 +76,10 @@ fn score_move(
             if escape_moves.len() <= 2 {
                 score += 15_000;
             }
+            position.invert();
         }
+
+        position.unapply_move(mv.clone(), restore).unwrap();
     }
 
     // 2. Captures, scored by MVV-LVA (Most Valuable Victim - Least Valuable Aggressor)
@@ -184,7 +188,7 @@ fn score_undermining(position: &Position, mv: &PieceMove) -> i32 {
                             if let Some(defender) = defender {
                                 if defender != target {
                                     // Don't count the targeted pawn
-                                    let moves = defender.get_legal_moves(position);
+                                    let moves = defender.get_legal_moves(position, true);
                                     if moves.into_iter().any(|m| m == piece.position) {
                                         other_defenders += 1;
                                     }
