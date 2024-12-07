@@ -6,10 +6,10 @@ use std::{cell::RefCell, hash::Hash, mem};
 use colored::Colorize;
 
 use crate::{
-    bitboard::Bitboard,
+    bitboard::{Bitboard, SumBitboards},
     piece::{rescue_drop::rescue_drop_map, Color, King, PieceType, PAWN_PROMOTION_TYPES},
     piece_move::{GameType, MoveType, PieceMove},
-    pos::Pos,
+    pos::{self, Pos},
 };
 
 use super::piece::Piece;
@@ -86,6 +86,7 @@ pub struct Position {
     pub black_king: Option<Pos>,
 
     pub piece_maps: RefCell<Option<PieceMaps>>,
+    pub attack_map: RefCell<Option<SumBitboards>>,
 
     pub true_active_color: Color,
 
@@ -169,6 +170,7 @@ impl Clone for Position {
             true_active_color: self.true_active_color,
             all_legal_moves: RefCell::new(None), // Don't clone the cache, it's slow
             piece_maps: self.piece_maps.clone(),
+            attack_map: RefCell::new(None),
         }
     }
 }
@@ -277,6 +279,7 @@ impl Position {
             true_active_color: Color::White,
             all_legal_moves: RefCell::new(None),
             piece_maps: RefCell::new(None),
+            attack_map: RefCell::new(None),
         }
     }
 
@@ -553,6 +556,18 @@ impl Position {
             self.all_map = self.white_map | self.black_map;
             self.position_lookup[position.0 as usize] = None;
 
+            if let Some(white_king) = self.white_king {
+                if white_king == position {
+                    self.white_king = None;
+                }
+            }
+
+            if let Some(black_king) = self.black_king {
+                if black_king == position {
+                    self.black_king = None;
+                }
+            }
+
             Ok(())
         } else {
             Err(anyhow::anyhow!("No piece at position"))
@@ -565,19 +580,29 @@ impl Position {
             return Err(anyhow::anyhow!("Position occupied"));
         }
 
+        let piece_type = piece.piece_type;
+        let position = piece.position;
+        let color = piece.color;
+
         if piece.color == Color::White {
-            let position = piece.position;
             let idx = add_to_slot_map(&mut self.white_pieces, piece);
             self.white_map.set(position);
             self.position_lookup[position.0 as usize] = Some(idx);
         } else {
-            let position = piece.position;
             let idx = add_to_slot_map(&mut self.black_pieces, piece);
             self.black_map.set(position);
             self.position_lookup[position.0 as usize] = Some(idx + 16);
         }
 
         self.all_map = self.white_map | self.black_map;
+
+        if piece_type == PieceType::King {
+            if color == Color::White {
+                self.white_king = Some(position);
+            } else {
+                self.black_king = Some(position);
+            }
+        }
 
         Ok(())
     }
@@ -1117,27 +1142,26 @@ impl Position {
 
     fn try_remove_castling_rights(&mut self, mv: PieceMove) {
         // If a rook moved from a corner, remove, if a king moved from its start position, remove both
-        if mv.piece_type == PieceType::Rook && mv.from == Pos::from_algebraic("a1").unwrap() {
+        if mv.piece_type == PieceType::Rook && mv.from == pos::A1 {
             if self.true_active_color == Color::White {
                 self.castling_rights.white_queen_side = false;
             } else {
                 self.castling_rights.black_queen_side = false;
             }
-        } else if mv.piece_type == PieceType::Rook && mv.from == Pos::from_algebraic("h1").unwrap()
-        {
+        } else if mv.piece_type == PieceType::Rook && mv.from == pos::H1 {
             if self.true_active_color == Color::White {
                 self.castling_rights.white_king_side = false;
             } else {
                 self.castling_rights.black_king_side = false;
             }
         } else if mv.piece_type == PieceType::King
-            && mv.from == Pos::from_algebraic("e1").unwrap()
+            && mv.from == pos::E1
             && self.true_active_color == Color::White
         {
             self.castling_rights.white_king_side = false;
             self.castling_rights.white_queen_side = false;
         } else if mv.piece_type == PieceType::King
-            && mv.from == Pos::from_algebraic("d1").unwrap()
+            && mv.from == pos::D1
             && self.true_active_color == Color::Black
         {
             self.castling_rights.black_king_side = false;
@@ -1273,32 +1297,23 @@ impl Position {
     }
 
     /// Returns the number of attackers to a specific position.
-    /// Color is the color of the attacked piece
-    pub fn count_attackers(&self, pos: Pos, color: Color) -> u8 {
-        let mut count = 0;
+    pub fn count_attackers(&self, pos: Pos) -> u8 {
+        if let Some(attack_map) = self.attack_map.borrow().as_ref() {
+            return attack_map.get(pos) as u8;
+        }
 
-        match color {
-            Color::White => {
-                for piece in self.black_pieces.iter() {
-                    if let Some(piece) = piece {
-                        if piece.get_legal_moves(self, false).get(pos) {
-                            count += 1;
-                        }
-                    }
-                }
-            }
-            Color::Black => {
-                for piece in self.white_pieces.iter() {
-                    if let Some(piece) = piece {
-                        if piece.get_legal_moves(self, false).get(pos) {
-                            count += 1;
-                        }
-                    }
-                }
+        let mut attack_map = SumBitboards::new();
+
+        for piece in self.white_pieces.iter() {
+            if let Some(piece) = piece {
+                let legal_moves = piece.get_legal_moves(self, false);
+                attack_map.add(legal_moves);
             }
         }
 
-        count
+        *self.attack_map.borrow_mut() = Some(attack_map);
+
+        self.attack_map.borrow().as_ref().unwrap().get(pos) as u8
     }
 
     pub fn get_piece_maps(&self) -> PieceMaps {
@@ -1934,6 +1949,27 @@ mod tests {
         assert!(
             moves.iter().any(|mv| mv.piece_type == PieceType::King
                 && mv.to == Pos::from_algebraic("g1").unwrap())
+                == false
+        );
+    }
+
+    #[test]
+    fn cannot_castle() {
+        let position =
+            Position::parse_from_fen("rnbq1bnr/ppp2kpp/8/1B1P4/8/8/PPPP1pPP/RNBQK2R w KQ - 0 1")
+                .unwrap();
+
+        let all_moves = position.get_all_legal_moves(GameType::Classic);
+
+        for mv in all_moves.as_ref().unwrap().iter() {
+            println!("{}", mv);
+        }
+
+        assert!(
+            all_moves
+                .unwrap()
+                .iter()
+                .any(|mv| matches!(mv.move_type, MoveType::Castle { .. }))
                 == false
         );
     }

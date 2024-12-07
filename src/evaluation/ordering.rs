@@ -1,7 +1,8 @@
 use crate::{
+    piece::{knight, pawn},
     piece_move::MoveType,
     search::{alpha_beta::SearchParams, search_results::SearchState},
-    Color, PieceMove, PieceType, Position,
+    PieceMove, PieceType, Position,
 };
 
 use super::piece_value;
@@ -135,75 +136,38 @@ fn score_move(
         score += 15000;
     }
 
-    score += score_tactical_patterns(position, mv);
-
     if params.features.enable_history {
         score += state.history.get_history_score(mv);
     }
 
+    score += quick_threat_score(position, mv);
+
     score
 }
 
-fn score_tactical_patterns(position: &Position, mv: &PieceMove) -> i32 {
-    let mut score = 0;
+fn quick_threat_score(position: &Position, mv: &PieceMove) -> i32 {
+    let mut score: i32 = 0;
 
-    // 1. Undermining (your existing effective pattern)
+    let maps = position.get_piece_maps();
+
+    // Knight fork patterns - looking for moves that put knight at fork distances from multiple pieces
+    if mv.piece_type == PieceType::Knight {
+        let valuable_targets =
+            maps.black_queens | maps.black_rooks | maps.black_bishops | maps.black_knights;
+        let attacked_valuable_targets = *knight::attack_map(mv.to) & valuable_targets;
+
+        if attacked_valuable_targets.count() >= 2 {
+            score += 7000;
+        }
+    }
+
+    // Pawn advances that threaten pieces
     if mv.piece_type == PieceType::Pawn {
-        score += score_undermining(position, mv);
-    }
+        let attacked_pieces = *pawn::attack_map(mv.to) & position.black_map;
 
-    score
-}
-
-#[allow(dead_code)]
-fn score_undermining(position: &Position, mv: &PieceMove) -> i32 {
-    // Only consider pawn moves
-    if mv.piece_type != PieceType::Pawn {
-        return 0;
-    }
-
-    let mut score = 0;
-
-    // Look for defended pieces that would become undefended
-    // if a defending pawn has to move
-    let to_pos = mv.to;
-
-    // If we're attacking a black pawn...
-    if let Some(target) = position.get_piece_at(to_pos) {
-        if target.piece_type == PieceType::Pawn && target.color == Color::Black {
-            // Look for pieces this pawn is defending
-            for piece in position.black_pieces.iter() {
-                if let Some(piece) = piece {
-                    if piece.piece_type == PieceType::Pawn {
-                        continue;
-                    }
-
-                    // Check if target pawn is defending this piece
-                    let defending_distance =
-                        (target.position.get_col() as i32 - piece.position.get_col() as i32).abs();
-                    if defending_distance <= 1 {
-                        // Check if piece has other defenders
-                        let mut other_defenders = 0;
-                        for defender in position.black_pieces.iter() {
-                            if let Some(defender) = defender {
-                                if defender != target {
-                                    // Don't count the targeted pawn
-                                    let moves = defender.get_legal_moves(position, true);
-                                    if moves.into_iter().any(|m| m == piece.position) {
-                                        other_defenders += 1;
-                                    }
-                                }
-                            }
-                        }
-
-                        if other_defenders == 0 {
-                            // Big bonus! This move would force the pawn to move/capture
-                            // and leave a piece undefended
-                            score += 8000 + piece_value(piece.piece_type) / 2;
-                        }
-                    }
-                }
-            }
+        for pos in attacked_pieces {
+            let piece = position.get_piece_at(pos).unwrap();
+            score += piece_value(piece.piece_type) * 100;
         }
     }
 

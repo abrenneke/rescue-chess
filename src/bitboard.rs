@@ -141,6 +141,40 @@ impl Bitboard {
     pub fn contains(&self, other: Self) -> bool {
         (self.0 & other.0) == other.0
     }
+
+    #[inline(always)]
+    pub fn from_squares(squares: &[Pos]) -> Self {
+        let mut board = Bitboard::new();
+        for &pos in squares {
+            board.set(pos);
+        }
+        board
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SumBitboards(pub [i32; 64]);
+
+impl SumBitboards {
+    pub fn new() -> Self {
+        SumBitboards([0; 64])
+    }
+
+    pub fn add(&mut self, bitboard: Bitboard) {
+        for pos in bitboard.into_iter() {
+            self.0[pos.0 as usize] += 1;
+        }
+    }
+
+    pub fn get(&self, pos: Pos) -> i32 {
+        self.0[pos.0 as usize]
+    }
+
+    pub fn subtract(&mut self, bitboard: Bitboard) {
+        for pos in bitboard.into_iter() {
+            self.0[pos.0 as usize] -= 1;
+        }
+    }
 }
 
 pub struct BitboardIter {

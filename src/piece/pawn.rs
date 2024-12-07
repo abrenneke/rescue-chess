@@ -36,6 +36,29 @@ static ATTACK_MAPS: LazyLock<[Bitboard; 64]> = LazyLock::new(|| {
         let start_pos = crate::Pos(i as u8);
 
         let mut pos = start_pos;
+        if let Some(pos) = pos.moved(-1, -1) {
+            board.set(pos);
+        }
+
+        pos = start_pos;
+        if let Some(pos) = pos.moved(1, -1) {
+            board.set(pos);
+        }
+
+        maps[i as usize] = board;
+    }
+
+    maps
+});
+
+static ATTACK_MAPS_BLACK: LazyLock<[Bitboard; 64]> = LazyLock::new(|| {
+    let mut maps = [Bitboard::new(); 64];
+
+    for i in 0..64 {
+        let mut board = Bitboard::new();
+        let start_pos = crate::Pos(i as u8);
+
+        let mut pos = start_pos;
         if let Some(pos) = pos.moved(-1, 1) {
             board.set(pos);
         }
@@ -54,6 +77,11 @@ static ATTACK_MAPS: LazyLock<[Bitboard; 64]> = LazyLock::new(|| {
 #[inline(always)]
 pub fn attack_map(pos: Pos) -> &'static Bitboard {
     &ATTACK_MAPS[pos.0 as usize]
+}
+
+#[inline(always)]
+pub fn attack_map_black(pos: Pos) -> &'static Bitboard {
+    &ATTACK_MAPS_BLACK[pos.0 as usize]
 }
 
 #[rustfmt::skip]

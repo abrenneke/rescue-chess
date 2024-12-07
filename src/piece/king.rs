@@ -1,10 +1,11 @@
 use std::sync::LazyLock;
 
 use crate::{
-    bitboard::Bitboard, evaluation::square_bonus::SquareBonus, piece_move::CanMove, Pos, Position,
+    bitboard::Bitboard, evaluation::square_bonus::SquareBonus, piece_move::CanMove, pos, Pos,
+    Position,
 };
 
-use super::{ChessPiece, Color, Piece, PieceType, RescueChessPiece};
+use super::{pawn, ChessPiece, Color, Piece, PieceType, RescueChessPiece};
 
 pub struct King;
 
@@ -92,6 +93,36 @@ impl ChessPiece for King {
     }
 }
 
+static WHITE_QUEEN_SIDE: LazyLock<Bitboard> = LazyLock::new(|| {
+    let mut board = Bitboard::new();
+    board.set(pos::C1);
+    board.set(pos::D1);
+    board.set(pos::E1);
+    board
+});
+
+static WHITE_KING_SIDE: LazyLock<Bitboard> = LazyLock::new(|| {
+    let mut board = Bitboard::new();
+    board.set(pos::F1);
+    board.set(pos::G1);
+    board
+});
+
+static BLACK_QUEEN_SIDE: LazyLock<Bitboard> = LazyLock::new(|| {
+    let mut board = Bitboard::new();
+    board.set(pos::E1);
+    board.set(pos::F1);
+    board.set(pos::G1);
+    board
+});
+
+static BLACK_KING_SIDE: LazyLock<Bitboard> = LazyLock::new(|| {
+    let mut board = Bitboard::new();
+    board.set(pos::B1);
+    board.set(pos::C1);
+    board
+});
+
 impl CanMove for King {
     fn get_legal_moves(piece: &Piece, position: &Position, exclude_white: bool) -> Bitboard {
         let pos = piece.position;
@@ -99,29 +130,24 @@ impl CanMove for King {
         let mut board = ATTACK_MAPS[pos.0 as usize] & !position.white_map;
         let all = position.all_map;
 
+        let maps = position.get_piece_maps();
+
         if position.true_active_color == Color::White {
             if position.castling_rights.white_queen_side {
-                if !all.get(Pos::from_algebraic("d1").unwrap())
-                    && !all.get(Pos::from_algebraic("c1").unwrap())
-                    && !all.get(Pos::from_algebraic("b1").unwrap())
-                    && position
-                        .get_piece_at(Pos::from_algebraic("a1").unwrap())
-                        .is_some_and(|p| p.color == Color::White && p.piece_type == PieceType::Rook)
+                if !all.intersects(*WHITE_QUEEN_SIDE)
+                    && maps.white_rooks.get(pos::A1)
                     && !King::is_white_king_in_check(&position)
                 {
-                    board.set(Pos::from_algebraic("c1").unwrap());
+                    board.set(pos::C1);
                 }
             }
 
             if position.castling_rights.white_king_side {
-                if !all.get(Pos::from_algebraic("f1").unwrap())
-                    && !all.get(Pos::from_algebraic("g1").unwrap())
-                    && position
-                        .get_piece_at(Pos::from_algebraic("h1").unwrap())
-                        .is_some_and(|p| p.color == Color::White && p.piece_type == PieceType::Rook)
+                if !all.intersects(*WHITE_KING_SIDE)
+                    && maps.white_rooks.get(pos::H1)
                     && !King::is_white_king_in_check(&position)
                 {
-                    board.set(Pos::from_algebraic("g1").unwrap());
+                    board.set(pos::G1);
                 }
             }
         } else {
@@ -130,28 +156,21 @@ impl CanMove for King {
             // not rotationally symmetrical
             if position.castling_rights.black_queen_side {
                 // Black queen side is e1 + f1 + g1
-                if !all.get(Pos::from_algebraic("e1").unwrap())
-                    && !all.get(Pos::from_algebraic("f1").unwrap())
-                    && !all.get(Pos::from_algebraic("g1").unwrap())
-                    && position
-                        .get_piece_at(Pos::from_algebraic("h1").unwrap())
-                        .is_some_and(|p| p.color == Color::White && p.piece_type == PieceType::Rook)
+                if !all.intersects(*BLACK_QUEEN_SIDE)
+                    && maps.white_rooks.get(pos::H1)
                     && !King::is_white_king_in_check(&position)
                 {
-                    board.set(Pos::from_algebraic("f1").unwrap());
+                    board.set(pos::F1);
                 }
             }
 
             if position.castling_rights.black_king_side {
                 // Black king side is b1 + c1
-                if !all.get(Pos::from_algebraic("b1").unwrap())
-                    && !all.get(Pos::from_algebraic("c1").unwrap())
-                    && position
-                        .get_piece_at(Pos::from_algebraic("a1").unwrap())
-                        .is_some_and(|p| p.color == Color::White && p.piece_type == PieceType::Rook)
+                if !all.intersects(*BLACK_KING_SIDE)
+                    && maps.white_rooks.get(pos::A1)
                     && !King::is_white_king_in_check(&position)
                 {
-                    board.set(Pos::from_algebraic("b1").unwrap());
+                    board.set(pos::B1);
                 }
             }
         }
@@ -167,22 +186,14 @@ impl CanMove for King {
 impl King {
     pub fn is_white_king_in_check(position: &Position) -> bool {
         let king = position.white_king;
+        let maps = position.get_piece_maps();
 
         match king {
             Some(king) => {
                 // Pawns
-                if let Some(pos) = king.moved(-1, -1) {
-                    if position.is_piece_at(pos, &[PieceType::Pawn], Color::Black) {
-                        return true;
-                    }
+                if maps.black_pawns.intersects(*pawn::attack_map(king)) {
+                    return true;
                 }
-
-                if let Some(pos) = king.moved(1, -1) {
-                    if position.is_piece_at(pos, &[PieceType::Pawn], Color::Black) {
-                        return true;
-                    }
-                }
-
                 // Use magic bitboards to get sliding piece attacks
                 let blockers = position.all_map;
 

@@ -14,6 +14,8 @@ pub struct TranspositionTable {
 #[derive(Clone, Debug)]
 pub struct TranspositionTableEntry {
     pub score: i32,
+    pub alpha: i32,
+    pub beta: i32,
     pub depth: u32,
     pub principal_variation: Vec<PieceMove>,
     pub node_type: NodeType,
@@ -52,9 +54,16 @@ impl TranspositionTable {
         if let Some(entry) = self.table.get(&position) {
             if entry.depth >= depth {
                 match entry.node_type {
-                    NodeType::Exact => Some(entry),
-                    NodeType::LowerBound if entry.score >= beta => Some(entry),
-                    NodeType::UpperBound if entry.score <= alpha => Some(entry),
+                    // For exact scores, just check if score is within current window
+                    NodeType::Exact if entry.score > alpha && entry.score < beta => Some(entry),
+                    // For lower bounds, need current beta >= stored beta
+                    NodeType::LowerBound if beta >= entry.beta && entry.score >= beta => {
+                        Some(entry)
+                    }
+                    // For upper bounds, need current alpha <= stored alpha
+                    NodeType::UpperBound if alpha <= entry.alpha && entry.score <= alpha => {
+                        Some(entry)
+                    }
                     _ => None,
                 }
             } else {

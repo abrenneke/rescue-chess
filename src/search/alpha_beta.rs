@@ -2,7 +2,7 @@ use tracing::trace;
 
 use crate::{
     evaluation::{ordering::order_moves, piece_value},
-    features::Features,
+    features::{EvaluationWeights, Features},
     piece_move::GameType,
     Color, PieceMove, PieceType, Position,
 };
@@ -40,6 +40,7 @@ pub struct SearchParams {
     pub window_size: i32,
 
     pub features: Features,
+    pub weights: EvaluationWeights,
 }
 
 impl Default for SearchParams {
@@ -57,6 +58,7 @@ impl Default for SearchParams {
             previous_score: None,
             window_size: 50,
             features: Features::default(),
+            weights: EvaluationWeights::default(),
         }
     }
 }
@@ -352,6 +354,21 @@ pub fn alpha_beta(
                 );
             }
 
+            if depth >= params.depth - 2 {
+                // Only log near root
+                println!(
+                    "TT hit: depth={}, node_type={:?}, score={}, pos={}, entry.alpha={}, entry.beta={}, alpha={}, beta={}",
+                    depth,
+                    entry.node_type,
+                    entry.score,
+                    position.to_fen(),
+                    entry.alpha,
+                    entry.beta,
+                    alpha,
+                    beta
+                );
+            }
+
             state.data.cached_positions += 1;
             return Ok(SearchResult {
                 principal_variation: Some(entry.principal_variation.clone()),
@@ -567,24 +584,25 @@ pub fn alpha_beta(
         );
     }
 
-    // Determine node type based on search result
-    let node_type = if score <= original_alpha {
-        NodeType::UpperBound
-    } else if score >= beta {
-        NodeType::LowerBound
-    } else {
-        NodeType::Exact
-    };
-
     if params.features.enable_transposition_table {
         if let Some(principal_variation) = &principal_variation {
+            let (node_type, store_score) = if score >= beta {
+                (NodeType::LowerBound, beta)
+            } else if score <= original_alpha {
+                (NodeType::UpperBound, original_alpha)
+            } else {
+                (NodeType::Exact, score)
+            };
+
             iteration.state.transposition_table.insert_if_better(
                 position.to_hashable(),
                 TranspositionTableEntry {
                     depth,
-                    score,
+                    score: store_score,
                     principal_variation: principal_variation.clone(),
                     node_type,
+                    alpha: original_alpha,
+                    beta,
                 },
             );
         }
@@ -744,6 +762,8 @@ fn test_move(
                     score: iteration.beta,
                     principal_variation: vec![mv],
                     node_type: NodeType::LowerBound,
+                    alpha: iteration.alpha,
+                    beta: iteration.beta,
                 },
             );
         }
@@ -799,6 +819,14 @@ fn test_move(
         // principal variation. So this move is equivalent to the best move we've found so far, so
         // store it in the principal variation for this node until we find a better move.
         iteration.principal_variation = Some(vec![mv]);
+
+        if depth == params.depth {
+            iteration.state.data.best_move_so_far = Some(mv);
+
+            if let Some(on_new_best_move) = iteration.state.callbacks.on_new_best_move {
+                on_new_best_move(mv, iteration.alpha);
+            }
+        }
     }
 
     if params.debug_print_verbose {

@@ -7,7 +7,7 @@ use rescue_chess::{
         search_results::SearchState,
         transposition_table::TranspositionTable,
     },
-    Color, Position,
+    Color, PieceMove, Position,
 };
 
 #[derive(Parser)]
@@ -35,6 +35,9 @@ struct Cli {
 
     #[arg(short = 'v', long)]
     pub verbose: bool,
+
+    #[arg(long)]
+    pub evaluate_move: Option<String>,
 
     pub fen: String,
 }
@@ -97,6 +100,16 @@ fn main() {
 
             let best_move = iterative_deepening_data.best_move;
             let best_score = iterative_deepening_data.best_score;
+            let main_pv = iterative_deepening_data.previous_pv.clone();
+
+            if best_move != iterative_deepening_data.best_move {
+                println!("Best move: {:?}", best_move);
+                println!(
+                    "Transposition table best move: {:?}",
+                    iterative_deepening_data.best_move
+                );
+                panic!("Transposition table search did not return the same best move");
+            }
 
             if position.true_active_color == Color::White {
                 println!("{}", best_move.unwrap());
@@ -133,6 +146,27 @@ fn main() {
                 }
             }
 
+            if let Some(evaluate_move) = args.evaluate_move {
+                println!("Evaluating move: {}", evaluate_move);
+                let mv = PieceMove::from_algebraic(&position, &evaluate_move, game_type).unwrap();
+
+                let (score, pv) = pv_move(&position, mv, params, &mut iterative_deepening_data);
+
+                let mut principal_variation = vec![];
+                let mut is_black = position.true_active_color == Color::Black;
+                for mv in pv.unwrap() {
+                    if is_black {
+                        principal_variation.push(mv.inverted());
+                    } else {
+                        principal_variation.push(mv.clone());
+                    }
+                    is_black = !is_black;
+                }
+
+                println!("{} Score: {}", mv, score);
+                println!("{} Principal variation: {:?}", mv, principal_variation);
+            }
+
             if args.stats {
                 println!("------------------------------------");
                 println!(
@@ -152,12 +186,7 @@ fn main() {
 
                 let mut principal_variation = vec![];
                 let mut is_black = position.true_active_color == Color::Black;
-                for mv in iterative_deepening_data
-                    .previous_pv
-                    .as_ref()
-                    .unwrap()
-                    .iter()
-                {
+                for mv in main_pv.as_ref().unwrap().iter() {
                     if is_black {
                         principal_variation.push(mv.inverted());
                     } else {
@@ -169,12 +198,7 @@ fn main() {
                 println!("Principal variation: {:?}", principal_variation);
 
                 let mut current_position = position.clone();
-                for mv in iterative_deepening_data
-                    .previous_pv
-                    .as_ref()
-                    .unwrap()
-                    .iter()
-                {
+                for mv in main_pv.as_ref().unwrap().iter() {
                     current_position.apply_move(mv.clone()).unwrap();
                     current_position.invert();
                 }
@@ -190,4 +214,35 @@ fn main() {
             eprintln!("Error: {}", e);
         }
     }
+}
+
+pub fn pv_move(
+    position: &Position,
+    mv: PieceMove,
+    mut params: SearchParams,
+    iterative_deepening_data: &mut IterativeDeepeningData,
+) -> (i32, Option<Vec<PieceMove>>) {
+    // Create a new position by applying the move
+    let mut new_position = position.clone();
+    new_position.apply_move(mv).unwrap();
+    new_position.invert();
+
+    // Search from the new position
+    iterative_deepening_data.update_position(new_position.clone());
+    params.depth -= 1;
+
+    iterative_deepening_data.search(params);
+
+    // The score needs to be inverted since we're looking from the opposite side
+    let score = iterative_deepening_data.best_score.map(|s| -s);
+    let mut pv = iterative_deepening_data.previous_pv.clone();
+
+    // If there is a PV, we need to add our initial move to the front
+    if let Some(ref mut moves) = pv {
+        moves.insert(0, mv);
+    } else {
+        pv = Some(vec![mv.clone()]);
+    }
+
+    (score.unwrap_or(0), pv)
 }

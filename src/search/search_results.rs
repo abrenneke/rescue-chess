@@ -46,7 +46,7 @@ pub struct SearchStateCallbacks<'a> {
     pub on_new_best_move: Option<&'a OnNewBestMove>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SearchStats {
     pub nodes_searched: u32,
     pub cached_positions: u32,

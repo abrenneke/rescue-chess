@@ -209,6 +209,30 @@ impl Pos {
     }
 }
 
+pub const A8: Pos = Pos(0);
+pub const A1: Pos = Pos(56);
+
+pub const B8: Pos = Pos(1);
+pub const B1: Pos = Pos(57);
+
+pub const C8: Pos = Pos(2);
+pub const C1: Pos = Pos(58);
+
+pub const D8: Pos = Pos(3);
+pub const D1: Pos = Pos(59);
+
+pub const E8: Pos = Pos(4);
+pub const E1: Pos = Pos(60);
+
+pub const F8: Pos = Pos(5);
+pub const F1: Pos = Pos(61);
+
+pub const G8: Pos = Pos(6);
+pub const G1: Pos = Pos(62);
+
+pub const H8: Pos = Pos(7);
+pub const H1: Pos = Pos(63);
+
 impl Deref for Pos {
     type Target = u8;
 

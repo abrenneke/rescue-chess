@@ -54,7 +54,7 @@ impl CommandHandler for GoCommand {
 
         let game_state = engine.game_state.clone();
 
-        std::thread::spawn(move || {
+        let handle = std::thread::spawn(move || {
             let mut game_state = game_state.lock().unwrap();
             let is_black = game_state.current_turn == Color::Black;
 
@@ -84,6 +84,8 @@ impl CommandHandler for GoCommand {
                 }
             }
         });
+
+        handle.join().unwrap();
 
         Ok(true)
     }

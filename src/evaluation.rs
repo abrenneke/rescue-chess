@@ -17,14 +17,14 @@ pub fn evaluate_position(board: &Position, _game_type: GameType, params: &Search
             let value = piece_value(piece.piece_type);
             let piece_score = value + piece.square_bonus();
 
-            score += piece_score;
+            score += piece_score * params.weights.material / 100;
 
             let holding_value = match piece.holding {
                 Some(piece_type) => piece_value(piece_type),
                 None => 0,
             };
 
-            score += holding_value;
+            score += holding_value * params.weights.material / 100;
         }
     }
 
@@ -34,24 +34,24 @@ pub fn evaluate_position(board: &Position, _game_type: GameType, params: &Search
             let value = piece_value(piece.piece_type);
             let piece_score = value + piece.square_bonus();
 
-            score -= piece_score;
+            score -= piece_score * params.weights.material / 100;
 
             let holding_value = match piece.holding {
                 Some(piece_type) => piece_value(piece_type),
                 None => 0,
             };
 
-            score -= holding_value;
+            score -= holding_value * params.weights.material / 100;
         }
     }
 
     if params.features.evaluate_bishop_pairs {
         if has_bishop_pair(board, Color::White) {
-            score += 50;
+            score += 50 * params.weights.bishop_pair / 100;
         }
 
         if has_bishop_pair(board, Color::Black) {
-            score -= 50;
+            score -= 50 * params.weights.bishop_pair / 100;
         }
     }
 
@@ -59,39 +59,70 @@ pub fn evaluate_position(board: &Position, _game_type: GameType, params: &Search
     if params.features.evaluate_pawn_structure {
         let white_pawn_score = evaluate_pawn_structure(board);
         let black_pawn_score = evaluate_pawn_structure(&inverted);
-        score += white_pawn_score - black_pawn_score;
+        score += (white_pawn_score - black_pawn_score) * params.weights.pawn_structure / 100;
     }
 
     // King safety evaluation
     if params.features.evaluate_king_safety {
         let white_king_safety = evaluate_king_safety(board);
         let black_king_safety = evaluate_king_safety(&inverted);
-        score += white_king_safety - black_king_safety;
+        score += (white_king_safety - black_king_safety) * params.weights.king_safety / 100;
     }
 
     // Mobility evaluation
     if params.features.evaluate_mobility {
         let white_mobility = evaluate_mobility(board);
         let black_mobility = evaluate_mobility(&inverted);
-        score += white_mobility - black_mobility;
+        score += (white_mobility - black_mobility) * params.weights.mobility / 100;
     }
 
     if params.features.evaluate_piece_coordination {
         let white_coordination = evaluate_piece_coordination(board);
         let black_coordination = evaluate_piece_coordination(&inverted);
-        score += white_coordination - black_coordination;
+        score +=
+            (white_coordination - black_coordination) * params.weights.piece_coordination / 100;
     }
 
     if params.features.evaluate_pawn_control {
         let white_pawn_control = evaluate_pawn_control(board);
         let black_pawn_control = evaluate_pawn_control(&inverted);
-        score += white_pawn_control - black_pawn_control;
+        score += (white_pawn_control - black_pawn_control) * params.weights.pawn_control / 100;
     }
 
     if params.features.evaluate_piece_protection {
-        let white_protection = evaluate_piece_protection(board);
-        let black_protection = evaluate_piece_protection(&inverted);
-        score += white_protection - black_protection;
+        let white_protection = evaluate_piece_protection(board, &inverted);
+        let black_protection = evaluate_piece_protection(&inverted, board);
+        score += (white_protection - black_protection) * params.weights.piece_protection / 100;
+    }
+
+    if params.features.evaluate_trapped_pieces {
+        let white_trapped = evaluate_trapped_pieces(board);
+        let black_trapped = evaluate_trapped_pieces(&inverted);
+        score += (white_trapped - black_trapped) * params.weights.trapped_pieces / 100;
+    }
+
+    if params.features.evaluate_strategic_squares {
+        let white_strategic = evaluate_strategic_squares(board);
+        let black_strategic = evaluate_strategic_squares(&inverted);
+        score += (white_strategic - black_strategic) * params.weights.strategic_squares / 100;
+    }
+
+    if params.features.evaluate_piece_pressure {
+        let white_pressure = evaluate_piece_pressure(board, &inverted);
+        let black_pressure = evaluate_piece_pressure(&inverted, board);
+        score += (white_pressure - black_pressure) * params.weights.piece_pressure / 100;
+    }
+
+    if params.features.evaluate_pawn_structure_quality {
+        let white_quality = evaluate_pawn_structure_quality(board, &inverted);
+        let black_quality = evaluate_pawn_structure_quality(&inverted, board);
+        score += (white_quality - black_quality) * params.weights.pawn_structure_quality / 100;
+    }
+
+    if params.features.evaluate_pawn_defense_quality {
+        let white_defense = evaluate_pawn_defense_quality(board);
+        let black_defense = evaluate_pawn_defense_quality(&inverted);
+        score += (white_defense - black_defense) * params.weights.pawn_defense_quality / 100;
     }
 
     score
@@ -144,6 +175,47 @@ fn evaluate_pawn_structure(position: &Position) -> i32 {
 
         if !maps.black_pawns.intersects(passed_mask) {
             score += 50 + (7 - rank as i32) * 10;
+        }
+    }
+
+    score
+}
+
+fn evaluate_pawn_structure_quality(position: &Position, inverted: &Position) -> i32 {
+    let mut score = 0;
+    let maps = position.get_piece_maps();
+
+    // Evaluate pawn chains
+    for pawn_pos in maps.white_pawns.into_iter() {
+        let file = pawn_pos.get_col();
+        let rank = pawn_pos.get_row();
+
+        // Check for pawn chain
+        let protected_by_pawn = maps.white_pawns & *pawn::attack_map_black(pawn_pos);
+
+        if protected_by_pawn.count() > 0 {
+            score += 15; // Base chain bonus
+
+            // Additional bonus for advanced chains
+            score += (7 - rank) as i32 * 5;
+
+            // Extra bonus for central chains
+            if file >= 2 && file <= 5 {
+                score += 10;
+            }
+        }
+
+        // Evaluate pawn tension (pawns facing each other)
+        let enemy_pawn_file = Bitboard::for_file(file) & maps.black_pawns;
+        if enemy_pawn_file.count() > 0 {
+            let enemy_pawn_rank = enemy_pawn_file.into_iter().next().unwrap().get_row();
+            if (enemy_pawn_rank as i32 - rank as i32).abs() == 1 {
+                // Reward tension maintenance in good positions
+                if position.count_attackers(pawn_pos) >= inverted.count_attackers(pawn_pos.invert())
+                {
+                    score += 20; // Keep tension when stronger
+                }
+            }
         }
     }
 
@@ -221,14 +293,14 @@ fn evaluate_pawn_control(position: &Position) -> i32 {
     score
 }
 
-fn evaluate_piece_protection(position: &Position) -> i32 {
+fn evaluate_piece_protection(position: &Position, inverted: &Position) -> i32 {
     let mut score: i32 = 0;
 
     for piece in &position.white_pieces {
         if let Some(piece) = piece {
             let pos = piece.position;
-            let attackers = position.count_attackers(pos, Color::White) as i32;
-            let defenders = position.count_attackers(pos, Color::Black) as i32;
+            let attackers = inverted.count_attackers(pos.invert()) as i32;
+            let defenders = position.count_attackers(pos) as i32;
 
             // Base the importance of protection on piece value
             let piece_importance: i32 = match piece.piece_type {
@@ -256,6 +328,169 @@ fn evaluate_piece_protection(position: &Position) -> i32 {
     }
 
     score
+}
+
+fn evaluate_trapped_pieces(position: &Position) -> i32 {
+    let mut score = 0;
+
+    for piece in &position.white_pieces {
+        if let Some(piece) = piece {
+            // Skip pawns and king
+            if matches!(piece.piece_type, PieceType::Pawn | PieceType::King) {
+                continue;
+            }
+
+            let moves = piece.get_legal_moves(position, true);
+            if moves.count() <= 2 {
+                // Penalty based on piece value
+                score -= piece_value(piece.piece_type) / 4;
+            }
+        }
+    }
+    score
+}
+
+fn evaluate_strategic_squares(position: &Position) -> i32 {
+    let mut score = 0;
+
+    // Define strategic squares (like e4, d4, e5, d5, f4, f5)
+    let strategic_squares = Bitboard::center()
+        | Bitboard::from_squares(&[
+            Pos::xy(5, 3), // f4
+            Pos::xy(5, 4), // f5
+            Pos::xy(2, 3), // c4
+            Pos::xy(2, 4), // c5
+        ]);
+
+    // Count control of strategic squares by different piece types
+    for piece in &position.white_pieces {
+        if let Some(piece) = piece {
+            let control_map = piece.get_legal_moves(position, true);
+            let strategic_control = (control_map & strategic_squares).count();
+
+            // Higher bonus for permanent control (not just attacks)
+            let control_bonus = match piece.piece_type {
+                PieceType::Pawn => 35,   // Pawns provide permanent control
+                PieceType::Knight => 25, // Knights are good outpost pieces
+                PieceType::Bishop => 20,
+                PieceType::Rook => 15,
+                PieceType::Queen => 10, // Lower bonus as queen is often temporary
+                PieceType::King => 5,
+            };
+
+            score += strategic_control as i32 * control_bonus;
+        }
+    }
+
+    score
+}
+
+fn evaluate_piece_pressure(position: &Position, inverted: &Position) -> i32 {
+    let mut score = 0;
+
+    for piece in &inverted.white_pieces {
+        // Evaluate pressure on black pieces
+        if let Some(piece) = piece {
+            let pos_from_white = piece.position.invert();
+            let attackers = position.count_attackers(pos_from_white);
+            let defenders = inverted.count_attackers(pos_from_white.invert());
+
+            // Reward pressure even without capture possibility
+            if attackers > 0 {
+                let pressure_score = match piece.piece_type {
+                    PieceType::Queen => 15, // Keeping queen restricted is valuable
+                    PieceType::Rook => 12,
+                    PieceType::Bishop | PieceType::Knight => 8,
+                    PieceType::Pawn => 3,
+                    PieceType::King => 5,
+                };
+
+                // More pressure if piece is poorly defended
+                let defense_multiplier = if attackers > defenders { 2 } else { 1 };
+                score += pressure_score * attackers as i32 * defense_multiplier;
+            }
+
+            // Bonus for restricting piece mobility
+            let mobility = piece.get_legal_moves(inverted, true).count();
+            if mobility < 4 {
+                score += (4 - mobility as i32) * 10;
+            }
+        }
+    }
+
+    score
+}
+
+fn evaluate_pawn_defense_quality(position: &Position) -> i32 {
+    let mut score = 0;
+    let maps = position.get_piece_maps();
+
+    for pawn_pos in maps.white_pawns.into_iter() {
+        let defenders = position.count_attackers(pawn_pos);
+        let pawn_defenders = count_pawn_defenders(position, pawn_pos);
+
+        let mut queen_defending = false;
+        for piece in position.white_pieces.iter() {
+            if let Some(piece) = piece {
+                let queen_moves = piece.get_legal_moves(position, true);
+                if queen_moves.get(pawn_pos) {
+                    queen_defending = true;
+                    break;
+                }
+            }
+        }
+
+        let mut pawn_score = 0;
+
+        // Base defense evaluation
+        if defenders > 0 {
+            if pawn_defenders == 0 {
+                // Penalty for no pawn defenders
+                pawn_score -= 15;
+
+                // Extra penalty for queen being the only defender
+                if queen_defending && defenders == 1 {
+                    pawn_score -= 25;
+                }
+            } else {
+                // Bonus for pawn defenders
+                pawn_score += 10;
+            }
+        }
+
+        // Adjust score based on pawn's position
+        let importance_multiplier = get_pawn_importance(pawn_pos);
+        score += pawn_score * importance_multiplier / 100;
+    }
+
+    score
+}
+
+fn count_pawn_defenders(position: &Position, target: Pos) -> i32 {
+    let maps = position.get_piece_maps();
+    (*pawn::attack_map_black(target) & maps.white_pawns).count() as i32
+}
+
+fn get_pawn_importance(pos: Pos) -> i32 {
+    let file = pos.get_col();
+    let rank = pos.get_row();
+
+    // Higher multiplier for:
+    // - Central files (d,e)
+    // - Semi-central files (c,f)
+    // - Advanced ranks
+    // - Passed pawns
+    // - Protected pawns
+    let file_multiplier = match file {
+        3 | 4 => 150, // d and e files
+        2 | 5 => 120, // c and f files
+        _ => 100,
+    };
+
+    // More important as pawns advance
+    let rank_multiplier = 100 + (7 - rank as i32) * 10;
+
+    (file_multiplier * rank_multiplier) / 100
 }
 
 /// Returns the manhattan distance between two positions
