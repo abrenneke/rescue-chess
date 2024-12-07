@@ -92,6 +92,7 @@ impl SquareBonus for Bishop {
 }
 
 impl CanMove for Bishop {
+    #[inline]
     fn get_legal_moves(piece: &Piece, position: &Position, exclude_white: bool) -> Bitboard {
         let moves = magic::get_bishop_moves_magic(piece.position, position.all_map);
 

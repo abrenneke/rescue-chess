@@ -1,7 +1,7 @@
 use tracing::trace;
 
 use crate::{
-    evaluation::{evaluate_position, piece_value},
+    evaluation::{evaluate_position, ordering::order_moves},
     piece_move::MoveType,
     Position,
 };
@@ -12,13 +12,14 @@ use super::{
 };
 
 pub fn quiescence_search(
-    position: &Position,
+    position: &mut Position,
     mut alpha: i32,
     beta: i32,
     depth: u32,
     state: &mut SearchState,
     params: &SearchParams,
     initial_depth: u32,
+    ply: usize,
 ) -> Result<SearchResult, AlphaBetaError> {
     if position.is_checkmate(params.game_type).unwrap() {
         if params.debug_print_verbose {
@@ -84,6 +85,7 @@ pub fn quiescence_search(
 
     // Get only capture moves
     let mut moves = position.get_all_legal_moves(params.game_type).unwrap();
+
     moves.retain(|mv| {
         mv.is_capture()
             || matches!(
@@ -94,27 +96,6 @@ pub fn quiescence_search(
                 }
             )
     });
-
-    moves.sort_by_key(|mv| {
-        if let MoveType::Normal {
-            captured: Some(captured),
-            captured_holding,
-            ..
-        } = mv.move_type
-        {
-            // Higher score = better move
-            let base = piece_value(captured) * 10 - piece_value(mv.piece_type);
-
-            if let Some(captured_holding) = captured_holding {
-                base + piece_value(captured_holding)
-            } else {
-                base
-            }
-        } else {
-            0
-        }
-    });
-    moves.reverse();
 
     // If no captures are available, return standing pat
     if moves.is_empty() {
@@ -134,12 +115,13 @@ pub fn quiescence_search(
 
     let mut best_line = None;
 
+    let ordered_moves = order_moves(position, moves, None, state, ply, params);
+
     // Search capture moves
-    for mv in moves {
+    for mv in ordered_moves {
         // Apply move
-        let mut child = position.clone();
-        child.apply_move(mv).unwrap();
-        child.invert();
+        let restore = position.apply_move(mv).unwrap();
+        position.invert();
 
         if params.debug_print_verbose {
             trace!(
@@ -151,14 +133,19 @@ pub fn quiescence_search(
 
         // Recursively search position
         let result = quiescence_search(
-            &child,
+            position,
             -beta,
             -alpha,
             depth - 1,
             state,
             params,
             initial_depth,
+            ply + 1,
         )?;
+
+        // Unapply move
+        position.invert();
+        position.unapply_move(mv, restore).unwrap();
 
         let score = -result.score;
 

@@ -418,6 +418,7 @@ pub fn alpha_beta(
             state,
             params,
             params.depth,
+            ply,
         )?
         .score;
 

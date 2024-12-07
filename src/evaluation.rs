@@ -530,8 +530,8 @@ fn evaluate_mobility(position: &Position) -> i32 {
 
     let legal_moves = position.count_pseudolegal_moves();
 
-    for (piece_type, move_count) in legal_moves {
-        let mobility_bonus = mobility_bonus(piece_type) * move_count as i32;
+    for (piece_type, move_count) in legal_moves.iter() {
+        let mobility_bonus = mobility_bonus(*piece_type) * *move_count as i32;
         white_score += mobility_bonus;
     }
 

@@ -92,6 +92,7 @@ impl SquareBonus for Rook {
 }
 
 impl CanMove for Rook {
+    #[inline]
     fn get_legal_moves(piece: &Piece, position: &Position, exclude_white: bool) -> Bitboard {
         let moves = magic::get_rook_moves_magic(piece.position, position.all_map);
 

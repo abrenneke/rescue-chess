@@ -113,6 +113,7 @@ static MAGIC_TABLE: LazyLock<[MagicEntry; 64]> = LazyLock::new(|| {
 });
 
 /// Gets rook moves using magic lookup
+#[inline]
 pub fn get_rook_moves_magic(pos: Pos, occupied: Bitboard) -> Bitboard {
     let entry = &MAGIC_TABLE[pos.0 as usize];
     let relevant = occupied & entry.mask;

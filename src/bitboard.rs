@@ -37,8 +37,8 @@ impl Bitboard {
     }
 
     #[inline(always)]
-    pub fn count(&self) -> usize {
-        self.0.count_ones() as usize
+    pub fn count(&self) -> u8 {
+        self.0.count_ones() as u8
     }
 
     #[inline(always)]

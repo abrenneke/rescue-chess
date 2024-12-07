@@ -69,15 +69,16 @@ fn score_move(
         let restore = position.apply_move(mv.clone()).unwrap();
 
         if position.is_black_king_in_check().unwrap() {
-            position.invert();
+            // position.invert();
             score += 25_000;
 
-            let escape_moves = position.get_all_legal_moves(params.game_type).unwrap();
+            // Slow
+            // let escape_moves = position.get_all_legal_moves(params.game_type).unwrap();
             // let escape_moves = position.count_pseudolegal_moves();
-            if escape_moves.len() <= 2 {
-                score += 15_000;
-            }
-            position.invert();
+            // if escape_moves.len() <= 2 {
+            //     score += 15_000;
+            // }
+            // position.invert();
         }
 
         position.unapply_move(mv.clone(), restore).unwrap();

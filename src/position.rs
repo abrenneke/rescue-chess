@@ -1,8 +1,13 @@
 pub mod extended_fen;
 mod fen;
 
-use std::{cell::RefCell, hash::Hash, mem};
+use std::{
+    cell::{Ref, RefCell},
+    hash::Hash,
+    mem,
+};
 
+use arrayvec::ArrayVec;
 use colored::Colorize;
 
 use crate::{
@@ -87,6 +92,7 @@ pub struct Position {
 
     pub piece_maps: RefCell<Option<PieceMaps>>,
     pub attack_map: RefCell<Option<SumBitboards>>,
+    pub pseudolegal_moves: RefCell<Option<ArrayVec<(PieceType, u8), 16>>>,
 
     pub true_active_color: Color,
 
@@ -171,6 +177,7 @@ impl Clone for Position {
             all_legal_moves: RefCell::new(None), // Don't clone the cache, it's slow
             piece_maps: self.piece_maps.clone(),
             attack_map: RefCell::new(None),
+            pseudolegal_moves: RefCell::new(None),
         }
     }
 }
@@ -280,6 +287,7 @@ impl Position {
             all_legal_moves: RefCell::new(None),
             piece_maps: RefCell::new(None),
             attack_map: RefCell::new(None),
+            pseudolegal_moves: RefCell::new(None),
         }
     }
 
@@ -333,6 +341,8 @@ impl Position {
         self.all_map = self.white_map | self.black_map;
 
         *self.all_legal_moves.borrow_mut() = None;
+        *self.attack_map.borrow_mut() = None;
+        *self.pseudolegal_moves.borrow_mut() = None;
 
         let piece_maps_inverted = self.piece_maps.borrow().as_ref().map(|m| {
             let mut m = m.clone();
@@ -618,7 +628,10 @@ impl Position {
     }
 
     pub fn is_black_king_in_check(&self) -> Result<bool, anyhow::Error> {
-        Ok(King::is_black_king_in_check(self))
+        match self.black_king {
+            Some(black_king) => Ok(self.count_attackers(black_king) > 0),
+            None => Ok(false),
+        }
     }
 
     pub fn is_piece_at(&self, position: Pos, piece_type: &[PieceType], color: Color) -> bool {
@@ -632,8 +645,12 @@ impl Position {
         }
     }
 
-    pub fn count_pseudolegal_moves(&self) -> arrayvec::ArrayVec<(PieceType, usize), 16> {
-        let mut moves: arrayvec::ArrayVec<(PieceType, usize), 16> = arrayvec::ArrayVec::new();
+    pub fn count_pseudolegal_moves(&self) -> Ref<ArrayVec<(PieceType, u8), 16>> {
+        if self.pseudolegal_moves.borrow().is_some() {
+            return Ref::map(self.pseudolegal_moves.borrow(), |m| m.as_ref().unwrap());
+        }
+
+        let mut moves: ArrayVec<(PieceType, u8), 16> = ArrayVec::new();
 
         for piece in self.white_pieces.iter() {
             if let Some(piece) = piece {
@@ -642,7 +659,9 @@ impl Position {
             }
         }
 
-        moves
+        *self.pseudolegal_moves.borrow_mut() = Some(moves.clone());
+
+        Ref::map(self.pseudolegal_moves.borrow(), |m| m.as_ref().unwrap())
     }
 
     /// Gets all legal moves for the current position. Takes into account
@@ -1088,6 +1107,7 @@ impl Position {
                 // Movement
                 if mv.from != mv.to {
                     self.move_piece(mv.from, mv.to)?;
+                    self.try_en_passant_set(mv);
                 }
 
                 // Promotion
@@ -1132,7 +1152,6 @@ impl Position {
         }
 
         self.try_remove_castling_rights(mv);
-        self.try_en_passant_set(mv);
 
         Ok(RestorePosition {
             en_passant,
@@ -1184,17 +1203,15 @@ impl Position {
                 dropped_promoted_to,
                 promoted_to,
             } => {
-                let color = self
-                    .get_piece_at(mv.to)
-                    .ok_or_else(|| {
-                        anyhow::anyhow!(
-                            "Cannot unapply move from {} to {}. No piece at position {}",
-                            mv.from.to_algebraic(),
-                            mv.to.to_algebraic(),
-                            mv.to.to_algebraic()
-                        )
-                    })?
-                    .color;
+                let piece = self.get_piece_at(mv.to).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Cannot unapply move from {} to {}. No piece at position {}",
+                        mv.from.to_algebraic(),
+                        mv.to.to_algebraic(),
+                        mv.to.to_algebraic()
+                    )
+                })?;
+                let color = piece.color;
 
                 // Reverse order from apply_move!
 
@@ -1265,11 +1282,7 @@ impl Position {
     }
 
     fn try_en_passant_set(&mut self, mv: PieceMove) {
-        let piece = self
-            .get_piece_at(mv.to)
-            .expect("Piece did not move to position");
-
-        if piece.piece_type == PieceType::Pawn && mv.from.get_row() == 6 && mv.to.get_row() == 4 {
+        if mv.piece_type == PieceType::Pawn && mv.from.get_row() == 6 && mv.to.get_row() == 4 {
             self.en_passant = Some(Pos::xy(mv.from.get_col(), 5));
         } else {
             self.en_passant = None;

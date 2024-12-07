@@ -158,6 +158,7 @@ static KNIGHT_MOVE_TABLE: LazyLock<[Bitboard; 64]> = LazyLock::new(|| {
 });
 
 impl CanMove for Knight {
+    #[inline]
     fn get_legal_moves(piece: &Piece, position: &Position, exclude_white: bool) -> Bitboard {
         let board = KNIGHT_MOVE_TABLE[piece.position.0 as usize];
 
